@@ -1,0 +1,41 @@
+{
+  "name": "feishu-voice-bridge",
+  "version": "2026.3.31",
+  "description": "OpenClaw 原生飞书语音桥接插件，提供本地 STT、TTS 与飞书语音回传能力。",
+  "private": true,
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "index.test.js",
+    "README.md",
+    "openclaw.plugin.json",
+    "scripts"
+  ],
+  "scripts": {
+    "test": "node --test index.test.js",
+    "check": "node -e \"require('./index.js')\""
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "feishu",
+    "lark",
+    "tts",
+    "stt",
+    "voice"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "plugin": {
+      "id": "feishu-voice-bridge",
+      "label": "飞书语音桥接插件",
+      "localPath": "extensions/feishu-voice-bridge"
+    }
+  }
+}

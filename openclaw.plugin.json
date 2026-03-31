@@ -1,0 +1,82 @@
+{
+  "id": "feishu-voice-bridge",
+  "name": "飞书语音桥接插件（STT + TTS）",
+  "description": "OpenClaw 原生飞书语音桥接插件，提供本地 STT、TTS 与官方语音链路兼容能力。",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "scriptPath": {
+        "type": "string"
+      },
+      "sttScriptPath": {
+        "type": "string"
+      },
+      "defaultVoice": {
+        "type": "string"
+      },
+      "defaultRate": {
+        "type": "string"
+      },
+      "defaultPitch": {
+        "type": "string"
+      },
+      "sttLanguage": {
+        "type": "string"
+      },
+      "sttModel": {
+        "type": "string"
+      },
+      "voiceReplyEnabled": {
+        "type": "boolean"
+      },
+      "voiceReplyMode": {
+        "type": "string",
+        "enum": [
+          "inbound",
+          "always",
+          "off"
+        ]
+      },
+      "voiceReplyWindowMs": {
+        "type": "number",
+        "minimum": 1
+      },
+      "voiceReplyCooldownMs": {
+        "type": "number",
+        "minimum": 1
+      },
+      "maxReplyChars": {
+        "type": "number",
+        "minimum": 1
+      },
+      "maxCapturedReplyChars": {
+        "type": "number",
+        "minimum": 1
+      },
+      "voiceReplyDebounceMs": {
+        "type": "number",
+        "minimum": 0
+      },
+      "promptToolTtsForText": {
+        "type": "boolean"
+      },
+      "voiceReplySummaryEnabled": {
+        "type": "boolean"
+      },
+      "voiceReplySummaryMaxSentences": {
+        "type": "number",
+        "minimum": 1
+      },
+      "voiceReplySummaryJoiner": {
+        "type": "string"
+      },
+      "voiceReplySummaryPrefix": {
+        "type": "string"
+      },
+      "voiceReplySummarySuffix": {
+        "type": "string"
+      }
+    }
+  }
+}

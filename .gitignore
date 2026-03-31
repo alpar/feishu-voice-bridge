@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.local
+.env.*
+!.env.example
+node_modules/
+*.log
+coverage/
+dist/
+tmp/
+*.mp3
+*.ogg
+*.opus
+*.wav
