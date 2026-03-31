@@ -7,7 +7,12 @@
   "files": [
     "index.js",
     "index.test.js",
+    "lib",
     "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    ".env.example",
     "openclaw.plugin.json",
     "scripts"
   ],

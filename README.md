@@ -10,19 +10,14 @@
 
 ## 插件目标
 
-这个插件最初是为了解决一个很具体的问题：飞书语音消息虽然能转写，但语音回传常常不稳定、延迟高，而且容易和渠道特有逻辑绑死。
-
-第一轮实现之后，沉淀出了几条比较明确的原则：
+这个插件遵循几条固定原则：
 
 - TTS 策略、提供方选择和回复流程尽量交给 OpenClaw Core 统一管理
 - 飞书特有的上传、发送和会话状态管理收敛在插件内部
 - 优先使用官方 Hook，而不是去改 `openclaw-lark`
 - 能复用官方 `tts` 产物时尽量复用，避免同一段文本重复合成
 - 会话路由要容忍 `open_id` 和 `chat_id` 在不同事件里的别名漂移
-
-当前版本沿着这个方向继续收敛。
-
-这一版还有一个重要变化：语音发送不再只依赖模型是否在最终回复前成功调用 `tts`。插件会同时监听飞书真实出站文本，在没有可复用音频时，直接以最终文本为准进行本地合成；如果 `tts` 产物与最终文本一致，则继续优先复用官方产物。
+- 自动语音回复以最终文本为准，文本一致时优先复用官方 `tts` 已生成的音频
 
 ## 目录说明
 
@@ -33,10 +28,19 @@
 - `lib/config.js`
   - 解析插件配置
   - 统一合并默认值、网关配置和请求级覆盖参数
+- `lib/core-bridge.js`
+  - 收口 OpenClaw 原生语音运行时加载
+  - 统一复用原生摘要与原生 TTS 合成入口
+- `lib/runtime.js`
+  - 启动时探测原生 TTS、脚本兜底、STT 脚本和 `ffprobe` 可用性
+- `lib/speech-text.js`
+  - 收口语音朗读文本清洗、摘要源文本清洗和 transcript echo 匹配
 - `lib/text.js`
-  - 处理发声文本清洗
-  - 处理长文本摘要
   - 处理最终语音候选内容的合并策略
+  - 对外暴露兼容的文本工具入口
+- `lib/voice-reply-summary.js`
+  - 处理原生摘要适配与规则摘要兜底
+  - 统一生成语音回复摘要上下文
 - `lib/feishu.js`
   - 处理飞书目标解析、账号配置和 API 请求
 - `lib/audio.js`
@@ -44,10 +48,14 @@
 - `lib/providers.js`
   - 注册 `feishu-voice` 语音提供方
   - 注册 `feishu-voice` 音频理解提供方
+- `lib/voice-reply-store.js`
+  - 维护会话状态、待发送回复别名和外部事件去重缓存
+- `lib/voice-reply-route.js`
+  - 负责飞书目标解析、会话键归一化和入站元数据记忆
+- `lib/voice-reply-dispatcher.js`
+  - 负责候选回复收集、最终回复选择和 `agent_end` 时机发送
 - `lib/voice-reply-hooks.js`
-  - 维护飞书会话状态，包括语音窗口、冷却和去重控制
-  - 在需要时通过 `before_prompt_build` 注入提示，引导文本回复也调用官方 `tts`
-  - 捕获最终出站文本，保证文本和语音内容尽量一致
+  - 只负责挂接 OpenClaw Hook，把状态、路由和发送逻辑分发给内部模块
 - `scripts/send_voice.sh`
   - 封装 Edge TTS 与 `ffmpeg`
   - 统一输出为 OPUS，兼容飞书语音消息上传
@@ -90,23 +98,50 @@ apt-get install -y ffmpeg  # Ubuntu/Debian
 
 这个插件不是绕开官方 TTS，而是补齐飞书语音发送这一层。
 
-当前已经兼容的行为包括：
+核心行为：
 
 - `tts` 工具可以直接使用 `feishu-voice`
-- 插件能复用 `tts` 工具生成的 OPUS 音频
+- 自动语音回复会优先复用 OpenClaw 原生 `messages.tts` 链路做摘要和合成
+- 飞书入站语音转写会优先复用 OpenClaw 原生媒体理解/STT 运行时
+- 插件能复用 `tts` 工具或原生 provider 生成的 `opus / ogg / mp3 / wav / m4a` 音频
 - 如果没有可用的 `tts` 调用，插件可以回退到最终出站文本进行合成
-- 语音参数会兼容 Microsoft / Edge 风格配置：
-  - `messages.tts.microsoft.voice`
-  - `messages.tts.microsoft.rate`
-  - `messages.tts.microsoft.pitch`
-  - 兼容旧版 `messages.tts.edge.*` 别名
+- 语音参数支持从 `messages.tts.providers.microsoft.*`、`messages.tts.microsoft.*`、`messages.tts.edge.*` 读取
+- 长文本摘要优先走 `messages.tts.summaryModel`，未设置时回退到 `agents.defaults.model.primary`
 - 单条回复中的 `[[tts:...]]` 指令仍然走官方工具契约
 
-插件侧有意保留的差异包括：
+插件负责的内容：
 
-- 飞书自动语音桥接仍然保留语音窗口、冷却、去抖和重复抑制规则
-- 输出格式固定优先 OPUS，因为飞书投递成功率更重要
-- `microsoft.outputFormat` 暂不作为稳定插件协议暴露
+- 飞书自动语音桥接的语音窗口、冷却、去抖和重复抑制
+- 飞书语音文件上传与发送
+- 原生 TTS / STT 不可用时的脚本兜底
+
+## 配置分层建议
+
+建议把配置理解成三层：
+
+- `messages.tts.*`
+  - 控制 OpenClaw 原生 TTS 能力
+  - 包括 provider 选择、`summaryModel`、语音参数、fallback 等
+- `plugins.entries.feishu-voice-bridge.config.*`
+  - 控制飞书语音桥接行为
+  - 包括自动语音回复窗口、冷却、摘要开关、STT 脚本和兜底脚本
+- `plugins.entries.feishu-voice-bridge.hooks.*`
+  - 控制插件 Hook 行为
+  - 常用的是 `allowPromptInjection`，用于决定是否允许插件注入“尽量调用官方 tts”的提示
+
+推荐优先把 TTS 主配置写在 `messages.tts`，插件配置只负责飞书桥接与兜底。
+
+插件内部现在也按下面四组结构来组织配置，虽然对外仍保持兼容的平铺字段：
+
+- `tts.*`
+  - 兜底合成脚本路径，以及脚本兜底时使用的默认音色参数
+- `stt.*`
+  - 本地语音转写脚本、默认语言和模型
+  - 当 OpenClaw 原生 `runtime.stt` 可用时，插件会优先走原生转写
+- `voiceReply.timing.*`
+  - 入站窗口、冷却、去抖
+- `voiceReply.summary.*`
+  - 长文本摘要开关、句数、连接符和前后缀
 
 ## 配置示例
 
@@ -153,36 +188,110 @@ apt-get install -y ffmpeg  # Ubuntu/Debian
 - `maxCapturedReplyChars`：内部缓存文本的最大长度，主要用于长文本摘要
 - `voiceReplySummaryEnabled`：长文本是否自动改为“摘要发声”
 - `voiceReplySummaryMaxSentences`：长文本摘要最多保留几句
-- `voiceReplySummaryPrefix` / `voiceReplySummarySuffix`：摘要语音的前后缀
+- `voiceReplySummaryPrefix` / `voiceReplySummarySuffix`：规则摘要回退时使用的前后缀
 - `promptToolTtsForText`：是否在文本轮次提示模型主动调用官方 `tts`
+- `sttLanguage` / `sttModel`：本地 Whisper STT 脚本的默认语言与模型
+- `scriptPath` / `sttScriptPath`：覆盖插件自带脚本路径，仅在你需要自定义脚本时使用
+- `defaultVoice` / `defaultRate` / `defaultPitch`：插件脚本兜底合成时使用的默认参数
 
-## 推荐的 OpenClaw 设置
+### 原生 STT 说明
 
-建议和官方 TTS 配置一起使用：
+- 如果当前 OpenClaw 已配置可用的音频理解 provider，插件会优先调用 `api.runtime.stt.transcribeAudioFile(...)`
+- 只有在原生 STT 不可用或调用失败时，才会回退到 `scripts/openclaw_stt.sh`
+- 因此 `sttScriptPath` 现在主要承担“离线/兜底”角色，而不是默认主链路
+
+## 配置建议
+
+### 原生 TTS 配置
+
+建议把主 TTS 能力交给 OpenClaw 原生 `messages.tts.*`，插件只负责飞书桥接：
 
 ```json
 {
   "messages": {
     "tts": {
-      "provider": "feishu-voice",
+      "provider": "edge",
       "auto": "off",
       "mode": "final",
-      "microsoft": {
-        "voice": "zh-CN-XiaoxiaoNeural",
-        "rate": "+20%",
-        "pitch": "0"
+      "summaryModel": "openai/gpt-4.1-mini",
+      "providers": {
+        "microsoft": {
+          "voice": "zh-CN-XiaoxiaoNeural",
+          "rate": "+20%",
+          "pitch": "0"
+        }
       }
     }
   }
 }
 ```
 
-补充说明：
+- 推荐把 `messages.tts.provider` 配成原生 provider（如 `edge`、`openai`、`elevenlabs`），这样插件会优先复用原生摘要和原生合成
+- 推荐优先写 `messages.tts.providers.microsoft.*`，这和 OpenClaw 当前的 provider 配置模型更一致
+- 如果你没有配置 `messages.tts.summaryModel`，长文本语音摘要会自动回退到 `agents.defaults.model.primary`
+- `messages.tts.provider` 指定当前主 provider
+- `messages.tts.summaryModel` 控制长文本语音摘要使用的模型
+- 单次调用时传入的 `providerConfig / providerOverrides` 会优先于静态配置生效
 
-- 即使不打开 `promptToolTtsForText`，文本最终回复也可以走本地合成
-- 打开 `promptToolTtsForText` 的主要价值，是让插件更容易复用官方 `tts` 已生成的音频
-- 如果通过 `plugins.entries.feishu-voice-bridge.hooks.allowPromptInjection: false` 禁止提示注入，插件仍然可以工作，只是失去这条额外引导
+### 语音参数配置入口
+
+语音参数可以写在这些位置：
+
+```json
+{
+  "messages": {
+    "tts": {
+      "provider": "edge",
+      "microsoft": {
+        "voice": "zh-CN-XiaoxiaoNeural",
+        "rate": "+20%",
+        "pitch": "0"
+      },
+      "edge": {
+        "voice": "zh-CN-XiaoxiaoNeural"
+      }
+    }
+  }
+}
+```
+
+- 推荐入口：`messages.tts.providers.microsoft.*`
+- 也支持：`messages.tts.microsoft.*`
+- 也支持：`messages.tts.edge.*`
+- 当 `feishu-voice` 自己作为 TTS provider 使用时，也会读取当前调用传入的 `providerConfig / providerOverrides`
+
+### 插件桥接配置
+
+下面这些配置属于插件本身的飞书桥接层：
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "feishu-voice-bridge": {
+        "enabled": true,
+        "config": {
+          "voiceReplyEnabled": true,
+          "voiceReplyMode": "inbound",
+          "voiceReplySummaryEnabled": true,
+          "defaultVoice": "zh-CN-XiaoxiaoNeural",
+          "defaultRate": "+20",
+          "defaultPitch": "0",
+          "scriptPath": "./scripts/send_voice.sh",
+          "sttScriptPath": "./scripts/openclaw_stt.sh"
+        }
+      }
+    }
+  }
+}
+```
+
+- 如果把 `feishu-voice` 作为当前 TTS provider，插件会使用自身的合成与桥接逻辑完成发送
+- 即使不打开 `promptToolTtsForText`，文本最终回复也可以走原生合成或插件兜底合成
+- 打开 `promptToolTtsForText` 时，插件会在文本轮次提示模型主动调用官方 `tts`，从而更容易复用已生成音频
+- 如果通过 `plugins.entries.feishu-voice-bridge.hooks.allowPromptInjection: false` 禁止提示注入，插件仍然可以工作
 - `scriptPath` 和 `sttScriptPath` 默认会自动指向插件目录下的 `scripts/`，只有需要覆盖默认脚本时才需要显式配置
+- 如果已经配置好原生 `messages.tts.provider`，即使暂时不设置 `scriptPath` 兜底脚本，插件的大部分 TTS 能力仍可工作
 - 修改配置后需要重启网关
 
 ## 安全配置说明
@@ -225,8 +334,7 @@ npm test
    - 提示注入是否被插件 Hook 策略拦截
    - 如果你期待的是“复用官方 `tts` 音频”，模型是否真的调用了 `tts`
 
-## 后续可继续完善的方向
+## 发布说明
 
-- 把当前静态音色列表收敛成一个更明确的提供方音色目录
-- 当更多渠道暴露稳定语音附件元数据时，支持直接复用 Core TTS 附件发送
-- 增加覆盖语音窗口、冷却和重复抑制的轻量集成测试
+- 发布或打包时需要包含 `lib/` 与 `scripts/`，否则插件入口无法正常加载内部模块
+- 当前 `package.json` 已把 `lib/`、`scripts/`、`README.md`、`LICENSE` 等文件纳入发布清单
