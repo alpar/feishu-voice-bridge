@@ -206,7 +206,7 @@ sh ~/.openclaw/scripts/restart.sh
 
 ## 验证
 
-插件自检：
+先做本地自检：
 
 ```bash
 cd ~/.openclaw/extensions/feishu-voice-bridge
@@ -214,7 +214,7 @@ npm run check
 npm test
 ```
 
-确认插件已加载：
+再确认插件已加载：
 
 ```bash
 openclaw plugins info feishu-voice-bridge
@@ -225,6 +225,7 @@ openclaw plugins info feishu-voice-bridge
 - 插件状态为已加载
 - `speech` 中有 `feishu-voice`
 - `media-understanding` 中有 `feishu-voice`
+- 如果你是手动拷贝目录或 `--link` 安装，看到 `loaded without install/load-path provenance` 警告通常是正常的
 
 ## 功能测试
 
@@ -249,10 +250,18 @@ openclaw plugins info feishu-voice-bridge
 
 ## 排查
 
-先执行：
+建议按这个顺序排查：
 
 ```bash
+cd ~/.openclaw/extensions/feishu-voice-bridge
+npm run check
+npm test
 openclaw plugins info feishu-voice-bridge
+```
+
+如果还不对，再执行：
+
+```bash
 openclaw status --all
 ```
 
