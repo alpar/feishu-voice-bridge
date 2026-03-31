@@ -1,125 +1,41 @@
 # 飞书语音桥接插件
 
-`feishu-voice-bridge` 是一个 OpenClaw 原生插件，用来把飞书语音收发能力接入 OpenClaw 的标准语音链路，而不是在渠道层做额外分叉。
+`feishu-voice-bridge` 是一个 OpenClaw 原生插件，用于：
 
-它当前提供三项能力：
-
-1. 为官方 `tts` 工具注册 `feishu-voice` 语音提供方
-2. 为飞书入站语音消息注册 `feishu-voice` 转写提供方
-3. 为飞书场景提供自动语音回复桥接，把最终回复转换成独立飞书语音消息
-
-## 插件目标
-
-这个插件遵循几条固定原则：
-
-- TTS 策略、提供方选择和回复流程尽量交给 OpenClaw Core 统一管理
-- 飞书特有的上传、发送和会话状态管理收敛在插件内部
-- 优先使用官方 Hook，而不是去改 `openclaw-lark`
-- 能复用官方 `tts` 产物时尽量复用，避免同一段文本重复合成
-- 会话路由要容忍 `open_id` 和 `chat_id` 在不同事件里的别名漂移
-- 自动语音回复以最终文本为准，文本一致时优先复用官方 `tts` 已生成的音频
-
-## 目录说明
-
-- `index.js`
-  - 插件入口，只负责组装配置、Provider 和 Hook
-- `lib/constants.js`
-  - 统一维护默认值和公共常量
-- `lib/config.js`
-  - 解析插件配置
-  - 统一合并默认值、网关配置和请求级覆盖参数
-- `lib/core-bridge.js`
-  - 收口 OpenClaw 原生语音运行时加载
-  - 统一复用原生摘要与原生 TTS 合成入口
-- `lib/runtime.js`
-  - 启动时探测原生 TTS、脚本兜底、STT 脚本和 `ffprobe` 可用性
-- `lib/speech-text.js`
-  - 收口语音朗读文本清洗、摘要源文本清洗和 transcript echo 匹配
-- `lib/text.js`
-  - 处理最终语音候选内容的合并策略
-  - 对外暴露兼容的文本工具入口
-- `lib/voice-reply-summary.js`
-  - 处理原生摘要适配与规则摘要兜底
-  - 统一生成语音回复摘要上下文
-- `lib/feishu.js`
-  - 处理飞书目标解析、账号配置和 API 请求
-- `lib/audio.js`
-  - 处理音频时长探测、音频复用、本地合成与飞书语音发送
-- `lib/providers.js`
-  - 注册 `feishu-voice` 语音提供方
-  - 注册 `feishu-voice` 音频理解提供方
-- `lib/voice-reply-store.js`
-  - 维护会话状态、待发送回复别名和外部事件去重缓存
-- `lib/voice-reply-route.js`
-  - 负责飞书目标解析、会话键归一化和入站元数据记忆
-- `lib/voice-reply-dispatcher.js`
-  - 负责候选回复收集、最终回复选择和 `agent_end` 时机发送
-- `lib/voice-reply-hooks.js`
-  - 只负责挂接 OpenClaw Hook，把状态、路由和发送逻辑分发给内部模块
-- `scripts/send_voice.sh`
-  - 封装 Edge TTS 与 `ffmpeg`
-  - 统一输出为 OPUS，兼容飞书语音消息上传
-- `scripts/openclaw_stt.sh`
-  - 封装本地 Whisper 转写，供 OpenClaw 直接接入
-- `scripts/voice_to_text.sh`
-  - 提供命令行语音转文本能力，便于本地排查和独立验证
-
-## 推荐使用方式
-
-建议采用“插件内闭环”的模式：
-
-- 不修改 `openclaw-lark`
-- 飞书语音相关行为全部留在这个插件里
-- 通过 OpenClaw 官方 Hook 和官方 `tts` 工具接入能力
+1. 注册 `feishu-voice` TTS provider
+2. 注册飞书语音转写 provider
+3. 在飞书场景把最终文本回复补发为语音消息
 
 ## 安装
 
-推荐参考 OpenClaw 官方插件安装方式处理本仓库，不要只把代码拉到任意目录后直接改配置。
-
-### 方式 A：从本地源码安装到 OpenClaw（推荐）
+推荐方式：
 
 ```bash
 git clone git@github.com:alpar/feishu-voice-bridge.git ~/feishu-voice-bridge
 openclaw plugins install ~/feishu-voice-bridge
 ```
 
-说明：
-
-- `openclaw plugins install <path>` 默认会把插件复制到 `~/.openclaw/extensions/feishu-voice-bridge`
-- 这是最接近官方插件文档的安装方式，适合普通使用者
-- 本插件没有 Node.js 运行时依赖，不需要额外执行 `npm install`
-
-如果你是本地开发者，希望源码改动立即生效，可以改用 link 方式：
+开发场景也可以 link：
 
 ```bash
 openclaw plugins install -l ~/feishu-voice-bridge
 ```
 
-### 方式 B：手动放到全局扩展目录（仅建议开发场景）
+手动放置目录时，插件路径必须是：
 
 ```bash
-mkdir -p ~/.openclaw/extensions
-git clone git@github.com:alpar/feishu-voice-bridge.git ~/.openclaw/extensions/feishu-voice-bridge
-cd ~/.openclaw/extensions/feishu-voice-bridge
+~/.openclaw/extensions/feishu-voice-bridge
 ```
 
-说明：
-
-- 手动安装时，插件目录必须是 `~/.openclaw/extensions/feishu-voice-bridge`
-- 如果只是放在业务项目目录里，但没有执行 `openclaw plugins install <path>`，OpenClaw 通常不会自动加载它
-- 同样不需要执行 `npm install`
-- 这种方式通常会被 OpenClaw 视为“untracked local code”，`openclaw plugins info feishu-voice-bridge` 里会看到未记录 install provenance 的警告；普通使用者仍建议优先使用方式 A
-
-### 安装结果自检
+安装后可检查：
 
 ```bash
-test -f ~/.openclaw/extensions/feishu-voice-bridge/openclaw.plugin.json && echo "plugin files ok"
 openclaw plugins info feishu-voice-bridge
 ```
 
 ## 依赖安装
 
-### 步骤 1：安装系统依赖
+系统依赖：
 
 ```bash
 yum install -y ffmpeg       # CentOS / OpenCloudOS
@@ -127,29 +43,14 @@ apt-get install -y ffmpeg   # Ubuntu / Debian
 brew install ffmpeg         # macOS
 ```
 
-说明：
-
-- 插件依赖 `ffmpeg` 和 `ffprobe` 处理转码与时长探测
-- 这两个命令缺失时，语音发送链路通常会失败
-
-### 步骤 2：安装 Python 依赖
+Python 依赖：
 
 ```bash
-# 基础依赖
 python3 -m pip install edge-tts
-
-# 语音转文字功能（可选）
-python3 -m pip install openai-whisper
+python3 -m pip install openai-whisper  # 可选
 ```
 
-说明：
-
-- 插件脚本默认使用系统里的 `python3`
-- `edge-tts` 用于脚本兜底 TTS，建议安装
-- `openai-whisper` 只在你需要本地 STT 兜底时安装
-- 如果你完全依赖 OpenClaw 原生 STT，可先不安装 `openai-whisper`
-
-### 步骤 3：验证依赖安装
+依赖检查：
 
 ```bash
 python3 --version
@@ -159,7 +60,7 @@ edge-tts --help >/dev/null && echo "edge-tts ok"
 whisper --help >/dev/null && echo "whisper ok"  # 可选
 ```
 
-### 步骤 4：验证脚本链路
+脚本链路检查：
 
 ```bash
 cd ~/.openclaw/extensions/feishu-voice-bridge
@@ -167,7 +68,7 @@ bash scripts/send_voice.sh -t "这是一条测试语音" --no-send -o /tmp/feish
 test -f /tmp/feishu-voice-test.opus && echo "tts script ok"
 ```
 
-如果你安装了本地 Whisper，也可以继续验证：
+如安装了 Whisper，可继续测试：
 
 ```bash
 bash scripts/openclaw_stt.sh /tmp/feishu-voice-test.opus
@@ -181,23 +82,16 @@ OpenClaw 配置文件通常位于：
 ~/.openclaw/openclaw.json
 ```
 
-在开始前，请先准备好：
+必填配置只有两部分：
 
-- 一个已经接入 OpenClaw 的飞书应用
-- 该应用的 `App ID` 与 `App Secret`
-- 让机器人具备接收消息、上传文件、发送音频消息所需的飞书侧权限与事件订阅
+1. `channels.feishu.*`
+2. `plugins.entries.feishu-voice-bridge.*`
 
-建议把配置理解成两层必填 + 一层可选增强：
-
-1. `channels.feishu.*`：必填，飞书渠道凭证
-2. `plugins.entries.feishu-voice-bridge.*`：必填，插件启用与桥接策略
-3. `messages.tts.*`：可选增强，用于复用 OpenClaw 原生 TTS 与模型摘要
-
-其中前两部分是插件正常发送飞书语音的基础配置；`messages.tts.*` 不是硬性必填，但如果不配置，插件会更容易走脚本兜底而不是复用 OpenClaw 原生能力。
+`messages.tts.*` 是可选增强配置。
 
 ### 最小可运行配置
 
-如果你只想先把插件跑起来，不启用 OpenClaw 原生 TTS 复用，可以直接按下面这样配置：
+这是推荐默认示例，和你当前使用方式一致：
 
 ```json5
 {
@@ -231,16 +125,15 @@ OpenClaw 配置文件通常位于：
 }
 ```
 
-这套最小配置的特点：
+说明：
 
-- 直接关闭 OpenClaw 原生自动 TTS
-- 插件仍然可以工作，并通过自身脚本完成语音合成与发送
-- 超长文本仍会走插件自己的摘要逻辑，不会因为 `messages.tts: false` 就完全失效
-- 更接近你现在的实际使用方式，适合作为 README 的最低门槛安装示例
+- `messages.tts: false` 是合法配置
+- 插件仍可工作，并使用自己的脚本完成语音合成
+- 超长文本仍会走插件内置摘要逻辑
 
-### 原生 TTS 增强配置（可选）
+### 可选：启用原生 TTS 复用
 
-如果你希望插件优先复用 OpenClaw 原生 TTS、原生摘要模型和已有音频产物，请在上面的“最小可运行配置”基础上，把 `messages.tts` 改成下面这份对象配置：
+如果你希望优先复用 OpenClaw 原生 TTS / 摘要模型，把上面的 `messages.tts` 改成：
 
 ```json5
 {
@@ -262,45 +155,12 @@ OpenClaw 配置文件通常位于：
 }
 ```
 
-补充说明：
+注意：
 
-- 下面这段和 `messages.tts: false` 是二选一，不要同时保留
-- 这里的 `provider: "edge"` 是 OpenClaw 当前兼容的写法，运行时会按官方 TTS 逻辑解析
-- 如果你不需要复用 OpenClaw 原生 TTS，这一段可以完全不配，保持 `messages.tts: false` 即可
+- `messages.tts: false` 和 `messages.tts: {...}` 二选一
+- 不需要原生 TTS 复用时，保持 `messages.tts: false` 即可
 
-### 配置项说明
-
-最小配置必填项：
-
-- `channels.feishu.appId`
-  - 飞书应用的 App ID，必填
-- `channels.feishu.appSecret`
-  - 飞书应用的 App Secret，必填
-- `plugins.entries.feishu-voice-bridge.enabled`
-  - 必须为 `true`
-- `plugins.entries.feishu-voice-bridge.config.voiceReplyEnabled`
-  - 是否启用飞书自动语音桥接
-- `plugins.entries.feishu-voice-bridge.config.voiceReplyMode`
-  - `inbound` 只在最近有飞书入站消息的窗口内自动回语音
-  - `always` 始终允许自动语音回复
-  - `off` 关闭自动语音发送
-
-增强配置可选项：
-
-- `messages.tts.provider`
-  - 仅在 `messages.tts` 为对象时生效，决定插件优先复用哪条 OpenClaw 原生 TTS 链路
-- `messages.tts.summaryModel`
-  - 仅在 `messages.tts` 为对象时生效，长文本语音摘要优先使用的模型；未设置时回退到 `agents.defaults.model.primary`
-
-补充说明：
-
-- `messages.tts: false` 是合法的最小配置，表示关闭 OpenClaw 原生自动 TTS
-- 即使这样配置，插件仍可使用自己的脚本兜底完成飞书语音回复
-- 只有当你想复用 OpenClaw 原生 TTS / 原生摘要能力时，才需要把 `messages.tts` 展开成对象配置
-
-如果没有配置 `channels.feishu.appId` 或 `channels.feishu.appSecret`，插件可能显示已加载，但实际发送飞书语音一定会失败。
-
-### 可选插件配置
+### 常用插件配置
 
 ```json5
 {
@@ -322,32 +182,31 @@ OpenClaw 配置文件通常位于：
 }
 ```
 
-这部分同样是在“最小可运行配置”基础上，按需追加到 `plugins.entries.feishu-voice-bridge.config`。
+常用字段：
 
-常用配置项：
-
-- `voiceReplyWindowMs`：最近一次飞书入站消息后，允许自动回语音的窗口时间
-- `voiceReplyCooldownMs`：两次自动语音发送的最小间隔
-- `voiceReplyDebounceMs`：等待文本稳定后再发语音的延迟
+- `voiceReplyEnabled`：是否启用自动语音回复
+- `voiceReplyMode`：`inbound` / `always` / `off`
+- `voiceReplyWindowMs`：最近一次飞书入站消息后的语音回复窗口
+- `voiceReplyCooldownMs`：两次自动语音回复最小间隔
+- `voiceReplyDebounceMs`：等待文本稳定后再发送
 - `maxReplyChars`：最终朗读文本上限
-- `maxCapturedReplyChars`：用于摘要前缓存的最大文本长度
+- `maxCapturedReplyChars`：摘要前缓存文本上限
 - `voiceReplySummaryEnabled`：长文本是否改为摘要朗读
 - `voiceReplySummaryMaxSentences`：摘要最多保留几句
-- `scriptPath` / `sttScriptPath`：只在你要覆盖插件自带脚本时配置
 
-## 生效步骤
+如果没有配置 `channels.feishu.appId` 或 `channels.feishu.appSecret`，插件即使已加载，也无法发送飞书语音。
 
-保存配置后，重启 Gateway：
+## 生效
+
+修改配置后重启：
 
 ```bash
 sh ~/.openclaw/scripts/restart.sh
 ```
 
-如果你的 OpenClaw 不在默认目录，请改成自己的 `OPENCLAW_HOME/scripts/restart.sh`。
+## 验证
 
-## 安装后验证
-
-### 步骤 1：验证插件代码本身可加载
+插件自检：
 
 ```bash
 cd ~/.openclaw/extensions/feishu-voice-bridge
@@ -355,93 +214,71 @@ npm run check
 npm test
 ```
 
-预期结果：
-
-- `npm run check` 成功退出
-- `npm test` 全部通过
-
-### 步骤 2：验证 OpenClaw 已加载插件
+确认插件已加载：
 
 ```bash
 openclaw plugins info feishu-voice-bridge
 ```
 
-重点检查：
+重点看：
 
-- 插件 `feishu-voice-bridge` 已启用
-- `speech provider` 中能看到 `feishu-voice`
-- `media understanding provider` 中能看到 `feishu-voice`
-- 如果你是直接手动拷贝到 `~/.openclaw/extensions/`，看到 `loaded without install/load-path provenance` 警告是正常的；这表示它是未登记的本地代码，不代表插件没加载
-
-`openclaw status --all` 可以作为补充排查命令，但插件能力是否注册成功，优先看 `openclaw plugins info feishu-voice-bridge`。
-
-### 步骤 3：观察原生能力是否被复用
-
-启动后观察日志，出现以下关键词说明对应链路已命中：
-
-- `runtime ready: nativeTts=...`
-- `nativeStt=...`
-- `summary=...`
-- `feishu-voice synthesized via OpenClaw TTS`
-- `feishu-voice transcribed via OpenClaw runtime`
+- 插件状态为已加载
+- `speech` 中有 `feishu-voice`
+- `media-understanding` 中有 `feishu-voice`
 
 ## 功能测试
 
-建议按下面顺序做完整验收：
+建议按顺序测试：
 
-1. 在飞书里发送一条语音消息给 OpenClaw 机器人
-2. 确认 OpenClaw 能正常转写并回复文本
-3. 确认插件额外发送了一条飞书语音消息
-4. 再发送一条超长问题，确认语音回复读的是摘要，而不是简单截断
-5. 再发送一条包含 emoji 的文本，确认语音朗读会跳过 emoji 表情
+1. 发一条飞书语音给机器人
+2. 确认能转写并正常回文本
+3. 确认插件额外补发了一条飞书语音
+4. 发一条超长问题，确认语音读的是摘要
+5. 发一条包含 emoji 的文本，确认语音会跳过 emoji
 
-如果你开启了 `voiceReplyMode: "inbound"`，请在最近一次飞书入站消息后的窗口内测试；超过 `voiceReplyWindowMs` 后，自动语音回复会被抑制。
+`voiceReplyMode: "inbound"` 下，自动语音回复只会在最近一次飞书入站消息后的窗口内触发。
 
-## 与 OpenClaw 原生能力的关系
+## 常见问题
 
-这个插件不是绕开官方 TTS / STT，而是补齐飞书语音发送这一层。
-
-核心行为：
-
-- `tts` 工具可以直接使用 `feishu-voice`
-- 自动语音回复会优先复用 OpenClaw 原生 `messages.tts` 链路做摘要和合成
-- 飞书入站语音转写会优先复用 OpenClaw 原生 `api.runtime.stt.transcribeAudioFile(...)`
-- 插件能复用原生 provider 已生成的 `opus`、`ogg`、`mp3`、`wav`、`m4a` 音频
-- 原生 TTS / STT 不可用时，才会回退到插件脚本
-- 如果原生模型摘要不可用，长文本语音会自动回退到插件内置的规则摘要，而不是直接截断整段正文
-
-语音参数兼容入口：
-
-- 推荐：`messages.tts.providers.microsoft.*`
-- 兼容：`messages.tts.microsoft.*`
-- 兼容：`messages.tts.edge.*`
-
-## 常见安装失败原因
-
-- 只拉了代码，但没有执行 `openclaw plugins install <path>`，也没有把目录放到 `~/.openclaw/extensions/feishu-voice-bridge`
-- 没有填写 `channels.feishu.appId` / `channels.feishu.appSecret`
-- 配置改完后没有执行 `sh ~/.openclaw/scripts/restart.sh`
+- 拉了代码但没执行 `openclaw plugins install <path>`
+- 插件目录不在 `~/.openclaw/extensions/feishu-voice-bridge`
+- 没配置 `channels.feishu.appId` / `channels.feishu.appSecret`
+- 改完配置没有重启 Gateway
 - 本机缺少 `ffmpeg` / `ffprobe` / `edge-tts`
-- 误以为仓库里的 `.env.example` 会被插件自动加载；实际上不会自动加载
+- 误以为 `.env.example` 会被自动加载
 
-## 安全配置说明
+## 排查
 
-本插件不会在仓库中保存任何飞书密钥，但要区分两类读取入口：
+先执行：
 
-- 插件运行时发送飞书语音时，读取的是 `channels.feishu.appId` / `channels.feishu.appSecret`
-- 独立脚本 `scripts/send_voice.sh` 在手工调用时，才会读取：
-  - `FEISHU_APP_ID`
-  - `FEISHU_APP_SECRET`
-  - `FEISHU_CHAT_ID`
-  - `OPENCLAW_JSON`
+```bash
+openclaw plugins info feishu-voice-bridge
+openclaw status --all
+```
 
-推荐做法：
+再看日志关键词：
 
-- 通过 OpenClaw 本地配置、shell、launchd 或 CI Secret 注入真实值
-- 提交前确认不要把真实 `appId`、`appSecret`、token 或聊天标识写进仓库
-- 排查问题时，不要直接贴出完整日志里的 `Authorization` 头、token 或 `file_key`
+- `runtime ready: nativeTts=...`
+- `feishu-voice synthesized via OpenClaw TTS`
+- `feishu-voice transcribed via OpenClaw runtime`
+- `feishu-voice auto reply sent`
+- `feishu-voice skip auto reply: ...`
 
-仓库根目录提供了 `.env.example` 作为变量清单示例，但插件本身不会自动加载 `.env` 文件。
+## 安全说明
+
+插件运行时读取的是：
+
+- `channels.feishu.appId`
+- `channels.feishu.appSecret`
+
+手工调用 `scripts/send_voice.sh` 时，还会读取：
+
+- `FEISHU_APP_ID`
+- `FEISHU_APP_SECRET`
+- `FEISHU_CHAT_ID`
+- `OPENCLAW_JSON`
+
+不要把真实密钥、token、聊天标识提交进仓库。
 
 ## 开发命令
 
@@ -449,17 +286,3 @@ openclaw plugins info feishu-voice-bridge
 npm run check
 npm test
 ```
-
-## 排查清单
-
-1. 执行 `openclaw plugins info feishu-voice-bridge`
-2. 确认插件已加载，并且 `speech: feishu-voice` 已注册
-3. 在网关日志里检查这些关键词：
-   - `feishu-voice captured generated audio`
-   - `feishu-voice auto reply sent`
-   - `feishu-voice skip auto reply: ...`
-4. 如果文本轮次没有发声，继续检查：
-   - 当前渠道是否正常触发了出站 `message_sent`
-   - 是否只在需要复用官方音频时才开启了 `promptToolTtsForText`
-   - 提示注入是否被插件 Hook 策略拦截
-   - 如果你期待的是“复用官方 `tts` 音频”，模型是否真的调用了 `tts`
