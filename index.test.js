@@ -15,6 +15,7 @@ const {
   loadGeneratedAudioArtifact,
   mergeVoiceReplyCandidate,
   prepareVoiceReplyText,
+  shouldSkipVoiceReplyText,
   registerVoiceReplyHooks
 } = plugin.__private;
 
@@ -114,6 +115,12 @@ test("extractAssistantTextFromAgentMessage 能提取最终 assistant 文本块",
     role: "user",
     content: [{ type: "text", text: "用户消息" }]
   }), "");
+});
+
+test("shouldSkipVoiceReplyText 会过滤 /stop 自动回复和 NO_REPLY", () => {
+  assert.equal(shouldSkipVoiceReplyText("NO_REPLY"), true);
+  assert.equal(shouldSkipVoiceReplyText("⚙️ Agent was aborted."), true);
+  assert.equal(shouldSkipVoiceReplyText("这是正常回复"), false);
 });
 
 test("mergeVoiceReplyCandidate 优先采用 message_sent 文本并丢弃不匹配的 tts 音频", () => {

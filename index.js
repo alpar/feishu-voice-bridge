@@ -7,7 +7,8 @@ const {
   extractAssistantTextFromAgentMessage,
   extractMessageSentText,
   mergeVoiceReplyCandidate,
-  prepareVoiceReplyText
+  prepareVoiceReplyText,
+  shouldSkipVoiceReplyText
 } = require("./lib/text");
 const { buildMediaUnderstandingProvider, buildProvider } = require("./lib/providers");
 const { registerVoiceReplyHooks } = require("./lib/voice-reply-hooks");
@@ -35,5 +36,6 @@ module.exports.__private = {
   loadGeneratedAudioArtifact,
   mergeVoiceReplyCandidate,
   prepareVoiceReplyText,
+  shouldSkipVoiceReplyText,
   registerVoiceReplyHooks
 };
