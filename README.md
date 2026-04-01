@@ -8,7 +8,9 @@
 
 ## 3 分钟安装
 
-如果你是把这个仓库直接发给另一台 OpenClaw，只按下面这一条默认流程安装即可，不要一开始就在 `install`、`install -l`、手动复制之间切换。
+这个插件当前只支持源码安装。
+
+如果你是把这个仓库直接发给另一台 OpenClaw，只按下面这一条默认流程安装即可，不要在 npm 包安装、`install -l`、手动复制之间来回切换。
 
 ### 1）放到默认扩展目录
 
@@ -35,6 +37,14 @@ python3 -m pip install openai-whisper
 ```bash
 openclaw plugins install ~/.openclaw/extensions/feishu-voice-bridge
 ```
+
+不要使用下面这些方式：
+
+- `openclaw plugins install feishu-voice-bridge`
+- 任何 npm registry / tgz 包安装方式
+- `--dangerously-force-unsafe-install`
+
+当前版本包含脚本调用链路，OpenClaw 安装器会触发危险代码扫描；即使显式传入强制参数，实际安装链路里也仍然可能被拦截。
 
 ### 4）写入最小配置
 
@@ -183,7 +193,7 @@ openclaw plugins info feishu-voice-bridge
 
 ## 开发模式
 
-只有在你明确要做本地开发调试时，才使用 link 模式：
+只有在你明确要做本地开发调试时，才使用 link 模式；普通使用场景不要这样装：
 
 ```bash
 git clone git@github.com:alpar/feishu-voice-bridge.git ~/feishu-voice-bridge
@@ -214,6 +224,7 @@ bash scripts/openclaw_stt.sh /tmp/feishu-voice-test.opus
 ## 常见问题
 
 - 拉了代码但没执行 `openclaw plugins install <path>`
+- 误用了 `openclaw plugins install feishu-voice-bridge`
 - 插件未正确安装，或源码目录没有通过 `plugins.load.paths` 加入加载路径
 - 没配置 `channels.feishu.appId` / `channels.feishu.appSecret`
 - 改完配置没有重启 Gateway
