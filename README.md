@@ -21,7 +21,7 @@ openclaw plugins install ~/feishu-voice-bridge
 openclaw plugins install -l ~/feishu-voice-bridge
 ```
 
-手动放置目录时，插件路径必须是：
+如果你不走 `openclaw plugins install`，而是手动复制到默认扩展目录，推荐放在：
 
 ```bash
 ~/.openclaw/extensions/feishu-voice-bridge
@@ -63,9 +63,15 @@ whisper --help >/dev/null && echo "whisper ok"  # 可选
 脚本链路检查：
 
 ```bash
-cd ~/.openclaw/extensions/feishu-voice-bridge
+cd ~/feishu-voice-bridge
 bash scripts/send_voice.sh -t "这是一条测试语音" --no-send -o /tmp/feishu-voice-test.opus
 test -f /tmp/feishu-voice-test.opus && echo "tts script ok"
+```
+
+如果你使用的是复制安装，也可以进入：
+
+```bash
+cd ~/.openclaw/extensions/feishu-voice-bridge
 ```
 
 如安装了 Whisper，可继续测试：
@@ -201,7 +207,7 @@ OpenClaw 配置文件通常位于：
 修改配置后重启：
 
 ```bash
-sh ~/.openclaw/scripts/restart.sh
+openclaw gateway restart
 ```
 
 ## 验证
@@ -209,10 +215,12 @@ sh ~/.openclaw/scripts/restart.sh
 先做本地自检：
 
 ```bash
-cd ~/.openclaw/extensions/feishu-voice-bridge
+cd ~/feishu-voice-bridge
 npm run check
 npm test
 ```
+
+如果你使用的是复制安装，也可以在 `~/.openclaw/extensions/feishu-voice-bridge` 下执行。
 
 再确认插件已加载：
 
@@ -225,7 +233,8 @@ openclaw plugins info feishu-voice-bridge
 - 插件状态为已加载
 - `speech` 中有 `feishu-voice`
 - `media-understanding` 中有 `feishu-voice`
-- 如果你是手动拷贝目录或 `--link` 安装，看到 `loaded without install/load-path provenance` 警告通常是正常的
+- 如果你是直接手动放入扩展目录、但没有通过 `openclaw plugins install` 建立安装记录，看到 `loaded without install/load-path provenance` 警告是正常的
+- 如果你使用的是 `openclaw plugins install -l <path>`，通常应由 `plugins.load.paths` 管理，不建议把它和上面的警告视为同一种情况
 
 ## 功能测试
 
@@ -242,7 +251,7 @@ openclaw plugins info feishu-voice-bridge
 ## 常见问题
 
 - 拉了代码但没执行 `openclaw plugins install <path>`
-- 插件目录不在 `~/.openclaw/extensions/feishu-voice-bridge`
+- 插件未正确安装，或源码目录没有通过 `plugins.load.paths` 加入加载路径
 - 没配置 `channels.feishu.appId` / `channels.feishu.appSecret`
 - 改完配置没有重启 Gateway
 - 本机缺少 `ffmpeg` / `ffprobe` / `edge-tts`
@@ -253,11 +262,13 @@ openclaw plugins info feishu-voice-bridge
 建议按这个顺序排查：
 
 ```bash
-cd ~/.openclaw/extensions/feishu-voice-bridge
+cd ~/feishu-voice-bridge
 npm run check
 npm test
 openclaw plugins info feishu-voice-bridge
 ```
+
+如果你使用的是复制安装，也可以改为进入 `~/.openclaw/extensions/feishu-voice-bridge` 后执行。
 
 如果还不对，再执行：
 
