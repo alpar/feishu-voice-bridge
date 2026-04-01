@@ -6,7 +6,7 @@ const assert = require("node:assert/strict");
 const plugin = require("./index.js");
 const packageJson = require("./package.json");
 const { resolveSpeechOptions } = require("./lib/config");
-const { buildMediaUnderstandingProvider } = require("./lib/providers");
+const { buildMediaUnderstandingProvider, buildProvider } = require("./lib/providers");
 const { createPluginRuntime } = require("./lib/runtime");
 
 const {
@@ -214,7 +214,11 @@ test("loadGeneratedAudioArtifact 会保留原生音频格式信息", () => {
 
 test("resolveSpeechOptions 优先读取原生 providerConfig/providerOverrides", () => {
   const options = resolveSpeechOptions({
-    rawPluginConfig: {},
+    rawPluginConfig: {
+      defaultVoice: "plugin-default",
+      defaultRate: "+20",
+      defaultPitch: "0"
+    },
     gatewayConfig: {
       messages: {
         tts: {
@@ -245,6 +249,69 @@ test("resolveSpeechOptions 优先读取原生 providerConfig/providerOverrides",
   assert.equal(options.voice, "zh-CN-YunxiNeural");
   assert.equal(options.rate, "+15");
   assert.equal(options.pitch, "+1");
+});
+
+test("buildProvider 会把解析后的语音参数传给原生 TTS", async () => {
+  let captured = null;
+  const provider = buildProvider({
+    rawPluginConfig: {
+      defaultVoice: "plugin-default",
+      defaultRate: "+20",
+      defaultPitch: "0"
+    },
+    gatewayConfig: {
+      messages: {
+        tts: {
+          providers: {
+            microsoft: {
+              voice: "gateway-voice",
+              rate: "+10%",
+              pitch: "+2Hz"
+            }
+          }
+        }
+      }
+    },
+    maxReplyChars: 200,
+    scriptPath: "/tmp/not-used",
+    defaultVoice: "fallback-voice",
+    defaultRate: "+20",
+    defaultPitch: "0"
+  }, {
+    info() {},
+    warn() {},
+    error() {}
+  }, {
+    hasNativeTts: true,
+    hasScriptTts: false
+  }, {
+    synthesizeVoiceAudioWithNativeTtsImpl: async (_config, _logger, params) => {
+      captured = params;
+      return {
+        audioBuffer: Buffer.from([1]),
+        fileType: "opus",
+        fileName: "reply.opus"
+      };
+    }
+  });
+
+  await provider.synthesize({
+    text: "这是原生 TTS 请求",
+    providerConfig: {
+      voice: "request-config",
+      rate: "+3%",
+      pitch: "+1Hz"
+    },
+    providerOverrides: {
+      voice: "request-override",
+      rate: "+5%",
+      pitch: "+4Hz"
+    }
+  });
+
+  assert.equal(captured.voice, "request-override");
+  assert.equal(captured.rate, "+5");
+  assert.equal(captured.pitch, "+4");
 });
 
 test("package.json 发布清单包含插件运行所需目录", () => {
@@ -487,7 +554,7 @@ test("长 assistant 回复会在发送语音前先转成摘要", async () => {
   assert.ok(sends[0].text.length <= 50);
 });
 
-test.skip("即使 message_sent 和 assistant 的标识不同，也会合并到同一个待发送回复", async () => {
+test("即使 message_sent 和 assistant 的标识不同，也会合并到同一个待发送回复", async () => {
   const api = createApi();
   const timers = createTimerHarness();
   const sends = [];
@@ -526,7 +593,7 @@ test.skip("即使 message_sent 和 assistant 的标识不同，也会合并到�
   assert.equal(sends[0].replyToMessageId, "om_test_inbound");
 });
 
-test.skip("后续上下文稀疏时，assistant 最终文本仍可复用最近一次入站元数据", async () => {
+test("后续上下文稀疏时，assistant 最终文本仍可复用最近一次入站元数据", async () => {
   const api = createApi();
   const timers = createTimerHarness();
   const sends = [];
