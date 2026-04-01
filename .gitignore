@@ -8,6 +8,7 @@ node_modules/
 coverage/
 dist/
 tmp/
+.agent/
 *.mp3
 *.ogg
 *.opus
