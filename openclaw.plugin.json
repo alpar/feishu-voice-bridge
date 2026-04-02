@@ -58,6 +58,14 @@
         "type": "number",
         "minimum": 0
       },
+      "voiceReplyRetryCount": {
+        "type": "number",
+        "minimum": 0
+      },
+      "voiceReplyRetryBackoffMs": {
+        "type": "number",
+        "minimum": 0
+      },
       "promptToolTtsForText": {
         "type": "boolean"
       },

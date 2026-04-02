@@ -301,20 +301,19 @@ TEMP_OPUS="$TEMP_DIR/voice.opus"
 echo -e "${BLUE}🔊 调用 Edge TTS...${NC}"
 
 # 构建参数
-RATE_PARAM=""
+EDGE_TTS_ARGS=(--voice "$VOICE" --text "$TEXT" --write-media "$TEMP_MP3")
 if [ "$RATE" != "0" ]; then
     FORMATTED_RATE="$(format_rate_value "$RATE")"
-    RATE_PARAM="--rate $FORMATTED_RATE"
+    EDGE_TTS_ARGS+=(--rate "$FORMATTED_RATE")
 fi
 
-PITCH_PARAM=""
 if [ "$PITCH" != "0" ]; then
     FORMATTED_PITCH="$(format_pitch_value "$PITCH")"
-    PITCH_PARAM="--pitch $FORMATTED_PITCH"
+    EDGE_TTS_ARGS+=(--pitch "$FORMATTED_PITCH")
 fi
 
 # 生成 MP3
-edge-tts --voice "$VOICE" --text "$TEXT" $RATE_PARAM $PITCH_PARAM --write-media "$TEMP_MP3" 2>&1 | tail -3
+edge-tts "${EDGE_TTS_ARGS[@]}" 2>&1 | tail -3
 
 if [ ! -f "$TEMP_MP3" ] || [ ! -s "$TEMP_MP3" ]; then
     echo -e "${RED}❌ 错误：语音生成失败${NC}"

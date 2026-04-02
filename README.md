@@ -71,6 +71,8 @@ OpenClaw 配置文件通常位于：
           voiceReplyWindowMs: 1200000,
           voiceReplyCooldownMs: 30000,
           voiceReplyDebounceMs: 2500,
+          voiceReplyRetryCount: 2,
+          voiceReplyRetryBackoffMs: 5000,
           maxReplyChars: 280,
           maxCapturedReplyChars: 6000,
           voiceReplySummaryEnabled: true,
@@ -186,6 +188,8 @@ openclaw plugins info feishu-voice-bridge
 - `voiceReplyWindowMs`：最近一次飞书入站消息后的语音回复窗口
 - `voiceReplyCooldownMs`：两次自动语音回复最小间隔
 - `voiceReplyDebounceMs`：等待文本稳定后再发送
+- `voiceReplyRetryCount`：后台语音发送失败后的重试次数
+- `voiceReplyRetryBackoffMs`：后台语音发送失败后的重试间隔基数，实际为 `基数 x 当前尝试次数`
 - `maxReplyChars`：最终朗读文本上限
 - `maxCapturedReplyChars`：摘要前缓存文本上限
 - `voiceReplySummaryEnabled`：长文本是否改为摘要朗读
