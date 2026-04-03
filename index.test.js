@@ -76,6 +76,7 @@ function createConfig(overrides = {}) {
     voiceReplyCooldownMs: 1,
     voiceReplyDebounceMs: 0,
     voiceReplyNoTextFallbackMs: 0,
+    voiceReplyAssistantSettleMs: 0,
     voiceReplyRetryCount: 2,
     voiceReplyRetryBackoffMs: 5000,
     voiceReplyEnabled: true,
@@ -411,6 +412,58 @@ test("语音入站时会跳过 before_agent_reply，等待后续 assistant 最�
 
   assert.deepEqual(sends, ["真正的最终回答"]);
   assert.equal(infos.some((message) => message.includes("skip before_agent_reply capture: voice inbound session")), true);
+});
+
+test("语音入站的 no_text_fallback 会等待 assistant 收敛后再发送", async () => {
+  const api = createApi();
+  const timers = createTimerHarness();
+  const sends = [];
+
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplyDebounceMs: 0,
+    voiceReplyNoTextFallbackMs: 0,
+    voiceReplyAssistantSettleMs: 8000
+  }), {
+    clearTimer: timers.clearTimer,
+    setTimer: timers.setTimer,
+    sendVoiceReplyImpl: async (_config, _logger, params) => {
+      sends.push(params);
+      return true;
+    }
+  });
+
+  const ctx = createCtx({
+    runId: "run-assistant-settle"
+  });
+
+  emit(api, "message_received", createInboundEvent({
+    body: "{\"file_key\":\"file_v3_0010c_demo\",\"duration\":4000}"
+  }), ctx);
+
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "第一段中间内容" }]
+    }
+  }, ctx);
+  emit(api, "agent_end", { success: true }, ctx);
+
+  assert.equal(timers.timers.length, 1);
+  assert.equal(timers.timers[0].ms, 8000);
+  assert.deepEqual(sends, []);
+
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "真正的最终回答" }]
+    }
+  }, ctx);
+
+  assert.equal(timers.timers.length, 2);
+  assert.equal(timers.timers[0].cleared, true);
+  assert.equal(timers.timers[1].ms, 8000);
+  assert.deepEqual(sends, []);
 });
 
 test("重复 register 不会重复注册 provider 和 hooks", () => {
