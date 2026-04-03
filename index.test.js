@@ -304,6 +304,17 @@ test("prepareVoiceReplyText 会跳过文本中的 emoji 表情", async () => {
   assert.equal(result.text, "老板好 今天进度正常 我们继续加油");
 });
 
+test("prepareVoiceReplyText 会去掉结构标签和转写块，只保留最终回答正文", async () => {
+  const result = await prepareVoiceReplyText(
+    "<message role=\"user\">语音转写：帮我查天气</message><message role=\"assistant\"><final_answer>周末多云，最高 24 度。</final_answer></message>",
+    createConfig({
+      maxReplyChars: 80
+    })
+  );
+  assert.equal(result.summaryApplied, false);
+  assert.equal(result.text, "周末多云，最高 24 度。");
+});
+
 test("prepareVoiceReplyText 会为长回复生成带前缀的摘要文本", async () => {
   const config = createConfig({
     maxReplyChars: 30,
