@@ -223,6 +223,45 @@ test("before_agent_reply 会兼容 OpenClaw 2026.4.2 的 cleanedBody", async () 
   assert.deepEqual(sends, ["这是 cleanedBody 最终回复"]);
 });
 
+test("before_agent_reply 命中最终文本后不再走 text hooks missing 兜底日志", async () => {
+  const sends = [];
+  const infos = [];
+  const api = createApi({
+    info(message) {
+      infos.push(String(message));
+    }
+  });
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplyDebounceMs: 0
+  }), {
+    sendVoiceReplyImpl: async (config, logger, params) => {
+      sends.push(params.text);
+      return true;
+    }
+  });
+
+  emit(api, "message_received", createInboundEvent({
+    body: "{\"file_key\":\"file_v3_0010c_demo\",\"duration\":4000}"
+  }), createCtx());
+
+  emit(api, "before_agent_reply", {
+    cleanedBody: "<message role=\"assistant\"><final_answer>最终正文</final_answer></message>"
+  }, createCtx({
+    runId: "run-before-agent-reply-final"
+  }));
+
+  await emit(api, "agent_end", {
+    success: true
+  }, createCtx({
+    runId: "run-before-agent-reply-final"
+  }));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(sends, ["最终正文"]);
+  assert.equal(infos.some((message) => message.includes("text hooks missing; using assistant fallback")), false);
+});
+
 test("重复 register 不会重复注册 provider 和 hooks", () => {
   resetSharedVoiceReplyStore();
   const handlers = new Map();
