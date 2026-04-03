@@ -123,6 +123,15 @@ test("extractAssistantTextFromAgentMessage 能提取最终 assistant 文本块",
     content: [{ type: "text", text: "NO_REPLY" }]
   }), "NO_REPLY");
   assert.equal(extractAssistantTextFromAgentMessage({
+    role: "assistant",
+    content: [
+      { type: "text", text: "需要您先确认这次操作。" },
+      { type: "toolCall", name: "search", arguments: { q: "杭州天气" } },
+      { type: "text", text: "最终回答第一段。" },
+      { type: "text", text: "最终回答第二段。" }
+    ]
+  }), "最终回答第一段。\n最终回答第二段。");
+  assert.equal(extractAssistantTextFromAgentMessage({
     role: "user",
     content: [{ type: "text", text: "用户消息" }]
   }), "");
