@@ -154,6 +154,42 @@ test("默认会注入禁止常规 tts tool 的飞书异步语音提示", () => {
   assert.match(result.appendSystemContext, /one matching voice reply asynchronously/i);
 });
 
+test("before_agent_reply 会提前缓存最终回复文本", async () => {
+  const sends = [];
+  const api = createApi();
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplyDebounceMs: 0
+  }), {
+    sendVoiceReplyImpl: async (config, logger, params) => {
+      sends.push(params.text);
+      return true;
+    }
+  });
+
+  emit(api, "message_received", createInboundEvent({
+    body: "{\"file_key\":\"file_v3_0010c_demo\",\"duration\":4000}"
+  }), createCtx());
+
+  emit(api, "before_agent_reply", {
+    reply: {
+      role: "assistant",
+      content: [{ type: "text", text: "这是最终回复" }]
+    }
+  }, createCtx({
+    runId: "run-before-agent-reply"
+  }));
+
+  await emit(api, "agent_end", {
+    success: true
+  }, createCtx({
+    runId: "run-before-agent-reply"
+  }));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(sends, ["这是最终回复"]);
+});
+
 test("重复 register 不会重复注册 provider 和 hooks", () => {
   resetSharedVoiceReplyStore();
   const handlers = new Map();
@@ -188,10 +224,10 @@ test("重复 register 不会重复注册 provider 和 hooks", () => {
 
   assert.equal(speechProviderCount, 1);
   assert.equal(mediaProviderCount, 1);
-  assert.equal(onCount, 10);
+  assert.equal(onCount, 11);
   assert.deepEqual(
     Array.from(handlers.values(), (items) => items.length),
-    new Array(10).fill(1)
+    new Array(11).fill(1)
   );
 });
 
