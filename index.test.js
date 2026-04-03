@@ -154,6 +154,29 @@ test("默认会注入禁止常规 tts tool 的飞书异步语音提示", () => {
   assert.match(result.appendSystemContext, /one matching voice reply asynchronously/i);
 });
 
+test("语音入站时会在 before_tool_call 阶段拦截 tts 工具", () => {
+  const api = createApi();
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplyDebounceMs: 0
+  }));
+
+  const ctx = createCtx({
+    runId: "run-block-tts"
+  });
+  emit(api, "message_received", createInboundEvent({
+    body: "{\"file_key\":\"file_v3_0010c_demo\",\"duration\":4000}"
+  }), ctx);
+
+  const result = emit(api, "before_tool_call", {
+    toolName: "tts",
+    params: { text: "不该触发的语音工具" }
+  }, ctx);
+
+  assert.equal(result?.block, true);
+  assert.match(String(result?.blockReason || ""), /tts tool/i);
+});
+
 test("默认关闭 before_agent_reply 实验链路", async () => {
   const sends = [];
   const api = createApi();
@@ -424,10 +447,10 @@ test("重复 register 不会重复注册 provider 和 hooks", () => {
 
   assert.equal(speechProviderCount, 1);
   assert.equal(mediaProviderCount, 1);
-  assert.equal(onCount, 11);
+  assert.equal(onCount, 12);
   assert.deepEqual(
     Array.from(handlers.values(), (items) => items.length),
-    new Array(11).fill(1)
+    new Array(12).fill(1)
   );
 });
 
