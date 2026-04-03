@@ -17,7 +17,7 @@ const { isFeishuChannelContext, isVoiceInboundEvent } = require("./lib/feishu");
 const { registerVoiceReplyHooks } = require("./lib/voice-reply-hooks");
 const { resetSharedVoiceReplyStore } = require("./lib/voice-reply-store");
 
-// 入口文件只负责组装插件，复杂逻辑拆到 lib/ 下，便于后续单独维护和测试。
+// 入口只做装配，业务逻辑都放在 lib/。
 const plugin = {
   id: "feishu-voice-bridge",
   name: "飞书语音桥接插件（STT + TTS）",

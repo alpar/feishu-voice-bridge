@@ -6,11 +6,9 @@
 2. 注册飞书语音转写 provider
 3. 在飞书场景把最终文本回复补发为语音消息
 
-## 3 分钟安装
+## 快速安装
 
-这个插件当前只支持源码安装。
-
-如果你是把这个仓库直接发给另一台 OpenClaw，只按下面这一条默认流程安装即可，不要在 npm 包安装、`install -l`、手动复制之间来回切换。
+当前只支持源码安装。普通使用场景按下面这条默认流程走，不要混用 npm 包安装、`install -l` 或手动复制。
 
 ### 1）放到默认扩展目录
 
@@ -96,7 +94,7 @@ OpenClaw 配置文件通常位于：
 openclaw gateway restart
 ```
 
-### 6）验证安装
+### 6）验证
 
 ```bash
 cd ~/.openclaw/extensions/feishu-voice-bridge
@@ -107,7 +105,7 @@ npm test
 openclaw plugins info feishu-voice-bridge
 ```
 
-确认以下几点：
+确认：
 
 - 插件状态为已加载
 - `speech` 中有 `feishu-voice`
@@ -128,11 +126,11 @@ openclaw plugins info feishu-voice-bridge
 ---
 ---
 
-## 可选增强
+## 可选配置
 
-### 启用 OpenClaw 原生 TTS 复用
+### 启用 OpenClaw 原生 TTS
 
-如果你希望优先复用 OpenClaw 原生 TTS / 摘要模型，再把 `messages.tts` 从 `false` 改成：
+如果你希望优先复用 OpenClaw 原生 TTS 和摘要模型，把 `messages.tts` 从 `false` 改成：
 
 ```json5
 {
@@ -157,9 +155,9 @@ openclaw plugins info feishu-voice-bridge
 注意：
 
 - `messages.tts: false` 和 `messages.tts: {...}` 二选一
-- 如果你只是想先装好并跑通，先不要启用这个增强项
+- 如果只是先装好并跑通，先不要启用这一项
 
-### 其他可选插件配置
+### 常用插件配置
 
 ```json5
 {
@@ -197,14 +195,14 @@ openclaw plugins info feishu-voice-bridge
 
 ## 开发模式
 
-只有在你明确要做本地开发调试时，才使用 link 模式；普通使用场景不要这样装：
+只有本地开发调试时才使用 link 模式；普通使用不要这样装：
 
 ```bash
 git clone git@github.com:alpar/feishu-voice-bridge.git ~/feishu-voice-bridge
 openclaw plugins install -l ~/feishu-voice-bridge
 ```
 
-## 依赖检查
+## 依赖自检
 
 ```bash
 python3 --version
@@ -214,7 +212,7 @@ edge-tts --help >/dev/null && echo "edge-tts ok"
 whisper --help >/dev/null && echo "whisper ok"  # 可选
 ```
 
-## 脚本链路检查
+## 脚本自检
 
 ```bash
 # 测试语音合成：
@@ -237,7 +235,7 @@ bash scripts/openclaw_stt.sh /tmp/feishu-voice-test.opus
 
 ## 排查
 
-建议按这个顺序排查：
+先跑这三个检查：
 
 ```bash
 cd ~/.openclaw/extensions/feishu-voice-bridge
@@ -252,7 +250,7 @@ openclaw plugins info feishu-voice-bridge
 openclaw status --all
 ```
 
-再看日志关键词：
+重点看这些日志关键词：
 
 - `runtime ready: nativeTts=...`
 - `feishu-voice synthesized via OpenClaw TTS`
