@@ -1,5 +1,7 @@
 "use strict";
 
+const PLUGIN_REGISTERED_SYMBOL = Symbol.for("openclaw.feishuVoiceBridge.pluginRegistered");
+
 const { resolvePluginConfig } = require("./lib/config");
 const { loadGeneratedAudioArtifact, synthesizeVoiceAudio } = require("./lib/audio");
 const { createPluginRuntime, logRuntimeReadiness } = require("./lib/runtime");
@@ -21,6 +23,11 @@ const plugin = {
   name: "飞书语音桥接插件（STT + TTS）",
   description: "OpenClaw 原生飞书语音桥接插件，提供本地 STT、TTS 与官方语音链路兼容能力。",
   register(api) {
+    if (api?.[PLUGIN_REGISTERED_SYMBOL]) return;
+    if (api && (typeof api === "object" || typeof api === "function")) {
+      api[PLUGIN_REGISTERED_SYMBOL] = true;
+    }
+
     const cfg = resolvePluginConfig(api);
     for (const warning of Array.isArray(cfg.securityWarnings) ? cfg.securityWarnings : []) {
       api.logger?.warn?.(`[feishu-voice] ${warning}`);

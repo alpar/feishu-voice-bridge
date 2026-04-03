@@ -154,6 +154,47 @@ test("默认会注入禁止常规 tts tool 的飞书异步语音提示", () => {
   assert.match(result.appendSystemContext, /one matching voice reply asynchronously/i);
 });
 
+test("重复 register 不会重复注册 provider 和 hooks", () => {
+  resetSharedVoiceReplyStore();
+  const handlers = new Map();
+  let speechProviderCount = 0;
+  let mediaProviderCount = 0;
+  let onCount = 0;
+  const api = {
+    pluginConfig: {},
+    config: {},
+    runtime: {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {}
+    },
+    on(name, handler) {
+      onCount += 1;
+      const list = handlers.get(name) || [];
+      list.push(handler);
+      handlers.set(name, list);
+    },
+    registerSpeechProvider() {
+      speechProviderCount += 1;
+    },
+    registerMediaUnderstandingProvider() {
+      mediaProviderCount += 1;
+    }
+  };
+
+  plugin.register(api);
+  plugin.register(api);
+
+  assert.equal(speechProviderCount, 1);
+  assert.equal(mediaProviderCount, 1);
+  assert.equal(onCount, 10);
+  assert.deepEqual(
+    Array.from(handlers.values(), (items) => items.length),
+    new Array(10).fill(1)
+  );
+});
+
 test("shouldSkipVoiceReplyText 会过滤 /stop 自动回复和 NO_REPLY", () => {
   assert.equal(shouldSkipVoiceReplyText("NO_REPLY"), true);
   assert.equal(shouldSkipVoiceReplyText("⚙️ Agent was aborted."), true);
