@@ -167,9 +167,7 @@ test("before_agent_reply 会提前缓存最终回复文本", async () => {
     }
   });
 
-  emit(api, "message_received", createInboundEvent({
-    body: "{\"file_key\":\"file_v3_0010c_demo\",\"duration\":4000}"
-  }), createCtx());
+  emit(api, "message_received", createInboundEvent(), createCtx());
 
   emit(api, "before_agent_reply", {
     reply: {
@@ -203,9 +201,7 @@ test("before_agent_reply 会兼容 OpenClaw 2026.4.2 的 cleanedBody", async () 
     }
   });
 
-  emit(api, "message_received", createInboundEvent({
-    body: "{\"file_key\":\"file_v3_0010c_demo\",\"duration\":4000}"
-  }), createCtx());
+  emit(api, "message_received", createInboundEvent(), createCtx());
 
   emit(api, "before_agent_reply", {
     cleanedBody: "这是 cleanedBody 最终回复"
@@ -241,9 +237,7 @@ test("before_agent_reply 命中最终文本后不再走 text hooks missing 兜�
     }
   });
 
-  emit(api, "message_received", createInboundEvent({
-    body: "{\"file_key\":\"file_v3_0010c_demo\",\"duration\":4000}"
-  }), createCtx());
+  emit(api, "message_received", createInboundEvent(), createCtx());
 
   emit(api, "before_agent_reply", {
     cleanedBody: "<message role=\"assistant\"><final_answer>最终正文</final_answer></message>"
@@ -314,6 +308,52 @@ test("before_agent_reply 若处于 transcript echo 会话中会被忽略，等�
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(sends, ["杭州今天多云，最高 25 度。"]);
+});
+
+test("语音入站时会跳过 before_agent_reply，等待后续 assistant 最终文本", async () => {
+  const sends = [];
+  const infos = [];
+  const api = createApi({
+    info(message) {
+      infos.push(String(message));
+    }
+  });
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplyDebounceMs: 0
+  }), {
+    sendVoiceReplyImpl: async (config, logger, params) => {
+      sends.push(params.text);
+      return true;
+    }
+  });
+
+  const ctx = createCtx({
+    runId: "run-before-agent-reply-voice-inbound"
+  });
+
+  emit(api, "message_received", createInboundEvent({
+    body: "{\"file_key\":\"file_v3_0010c_demo\",\"duration\":4000}"
+  }), ctx);
+
+  emit(api, "before_agent_reply", {
+    cleanedBody: "这是一段不应该被提前朗读的中间文本"
+  }, ctx);
+
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "真正的最终回答" }]
+    }
+  }, ctx);
+
+  await emit(api, "agent_end", {
+    success: true
+  }, ctx);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(sends, ["真正的最终回答"]);
+  assert.equal(infos.some((message) => message.includes("skip before_agent_reply capture: voice inbound session")), true);
 });
 
 test("重复 register 不会重复注册 provider 和 hooks", () => {
