@@ -728,25 +728,26 @@ test("resolveSpeechOptions 优先读取原生 providerConfig/providerOverrides",
   assert.equal(options.pitch, "+1");
 });
 
-test("resolvePluginConfig 会拒绝不受信任的脚本路径并回退到内置脚本", () => {
+test("resolvePluginConfig 不再暴露旧脚本路径配置", () => {
   const cfg = resolvePluginConfig({
     pluginConfig: {
       scriptPath: "/tmp/evil.sh",
-      sttScriptPath: "/tmp/evil-stt.sh"
+      sttScriptPath: "/tmp/evil-stt.sh",
+      defaultVoice: "zh-CN-YunxiNeural"
     }
   });
 
-  assert.match(cfg.scriptPath, /extensions\/feishu-voice-bridge\/scripts\/send_voice\.sh$/);
-  assert.match(cfg.sttScriptPath, /extensions\/feishu-voice-bridge\/scripts\/openclaw_stt\.sh$/);
-  assert.deepEqual(cfg.securityWarnings, [
-    "tts path rejected; fallback to bundled script",
-    "stt path rejected; fallback to bundled script"
-  ]);
+  assert.equal("scriptPath" in cfg, false);
+  assert.equal("sttScriptPath" in cfg, false);
+  assert.deepEqual(cfg.securityWarnings, []);
+  assert.equal(cfg.defaultVoice, "zh-CN-YunxiNeural");
 });
 
-test("synthesizeVoiceAudio 缺少脚本时不会泄露内部路径", () => {
+test("synthesizeVoiceAudio 缺少本地工具链时不会泄露内部细节", () => {
   assert.throws(() => synthesizeVoiceAudio({
-    scriptPath: "/tmp/not-found-script.sh"
+    runtime: {
+      hasToolTts: false
+    }
   }, {
     warn() {}
   }, {
@@ -754,7 +755,7 @@ test("synthesizeVoiceAudio 缺少脚本时不会泄露内部路径", () => {
     voice: "zh-CN-XiaoxiaoNeural",
     rate: "+20",
     pitch: "0"
-  }), /feishu-voice synthesize unavailable: script not found/);
+  }), /feishu-voice synthesize unavailable: local toolchain not ready/);
 });
 
 test("buildProvider 会把解析后的语音参数传给原生 TTS", async () => {
@@ -776,10 +777,9 @@ test("buildProvider 会把解析后的语音参数传给原生 TTS", async () =>
             }
           }
         }
-      }
+    }
     },
     maxReplyChars: 200,
-    scriptPath: "/tmp/not-used",
     defaultVoice: "fallback-voice",
     defaultRate: "+20",
     defaultPitch: "0"
@@ -789,7 +789,7 @@ test("buildProvider 会把解析后的语音参数传给原生 TTS", async () =>
     error() {}
   }, {
     hasNativeTts: true,
-    hasScriptTts: false
+    hasToolTts: false
   }, {
     synthesizeVoiceAudioWithNativeTtsImpl: async (_config, _logger, params) => {
       captured = params;
@@ -828,9 +828,7 @@ test("package.json 发布清单包含插件运行所需目录", () => {
 
 test("createPluginRuntime 会识别原生 STT 与原生摘要能力", () => {
   const runtime = createPluginRuntime({
-    gatewayConfig: {},
-    scriptPath: "/tmp/not-used-tts.sh",
-    sttScriptPath: "/tmp/not-used-stt.sh"
+    gatewayConfig: {}
   }, {
     stt: {
       transcribeAudioFile: async () => ({ text: "ok" })
@@ -844,35 +842,29 @@ test("createPluginRuntime 会识别原生 STT 与原生摘要能力", () => {
 
 test("createPluginRuntime 会给缺失外部依赖生成告警", () => {
   const runtime = createPluginRuntime({
-    gatewayConfig: {},
-    scriptPath: "/trusted/send_voice.sh",
-    sttScriptPath: "/trusted/openclaw_stt.sh"
+    gatewayConfig: {}
   }, null, {
-    pathExists(targetPath) {
-      return targetPath === "/trusted/send_voice.sh" || targetPath === "/trusted/openclaw_stt.sh";
-    },
     commandExists(command) {
       return command === "ffprobe";
     }
   });
 
-  assert.equal(runtime.hasScriptTts, true);
-  assert.equal(runtime.hasScriptStt, true);
+  assert.equal(runtime.hasToolTts, false);
+  assert.equal(runtime.hasToolStt, false);
   assert.equal(runtime.hasFfmpeg, false);
   assert.equal(runtime.hasEdgeTts, false);
   assert.equal(runtime.hasWhisper, false);
   assert.deepEqual(runtime.dependencyWarnings, [
-    "script TTS enabled but `edge-tts` is unavailable",
-    "script TTS enabled but `ffmpeg` is unavailable",
-    "script STT enabled but `whisper` is unavailable",
-    "script STT enabled but `ffmpeg` is unavailable"
+    "local TTS toolchain requires `edge-tts`",
+    "local TTS toolchain requires `ffmpeg`",
+    "local STT toolchain requires `whisper`",
+    "local STT toolchain requires `ffmpeg`"
   ]);
 });
 
 test("buildMediaUnderstandingProvider 优先使用 OpenClaw 原生 STT runtime", async () => {
   const provider = buildMediaUnderstandingProvider({
     gatewayConfig: {},
-    sttScriptPath: "/tmp/not-used-stt.sh",
     sttLanguage: "zh-CN",
     sttModel: "small"
   }, {
@@ -881,7 +873,7 @@ test("buildMediaUnderstandingProvider 优先使用 OpenClaw 原生 STT runtime",
     error() {}
   }, {
     hasNativeStt: true,
-    hasScriptStt: false,
+    hasToolStt: false,
     coreRuntime: {
       stt: {
         transcribeAudioFile: async ({ filePath, cfg, mime }) => {
@@ -905,10 +897,9 @@ test("buildMediaUnderstandingProvider 优先使用 OpenClaw 原生 STT runtime",
   assert.equal(result.model, "openclaw:media-understanding");
 });
 
-test("buildMediaUnderstandingProvider 缺少脚本时返回脱敏错误", async () => {
+test("buildMediaUnderstandingProvider 原生不可用时会回退到本地工具链", async () => {
   const provider = buildMediaUnderstandingProvider({
     gatewayConfig: {},
-    sttScriptPath: "/tmp/not-used-stt.sh",
     sttLanguage: "zh-CN",
     sttModel: "small"
   }, {
@@ -917,14 +908,48 @@ test("buildMediaUnderstandingProvider 缺少脚本时返回脱敏错误", async 
     error() {}
   }, {
     hasNativeStt: false,
-    hasScriptStt: false
+    hasToolStt: true
+  }, {
+    transcribeAudioFileWithToolchainImpl: ({ inputPath, language, model }) => {
+      assert.equal(typeof inputPath, "string");
+      assert.equal(language, "zh-CN");
+      assert.equal(model, "small");
+      return {
+        text: " 这是工具链转写结果 ",
+        model: "local-whisper:small"
+      };
+    }
+  });
+
+  const result = await provider.transcribeAudio({
+    buffer: Buffer.from([1, 2, 3]),
+    mimeType: "audio/ogg",
+    fileName: "input.ogg"
+  });
+
+  assert.equal(result.text, "这是工具链转写结果");
+  assert.equal(result.model, "local-whisper:small");
+});
+
+test("buildMediaUnderstandingProvider 缺少本地工具链时返回脱敏错误", async () => {
+  const provider = buildMediaUnderstandingProvider({
+    gatewayConfig: {},
+    sttLanguage: "zh-CN",
+    sttModel: "small"
+  }, {
+    info() {},
+    warn() {},
+    error() {}
+  }, {
+    hasNativeStt: false,
+    hasToolStt: false
   });
 
   await assert.rejects(() => provider.transcribeAudio({
     buffer: Buffer.from([1, 2, 3]),
     mimeType: "audio/ogg",
     fileName: "input.ogg"
-  }), /feishu-voice transcribe unavailable: script not found/);
+  }), /feishu-voice transcribe unavailable: local toolchain not ready/);
 });
 
 test("after_tool_call 捕获官方 tts 音频后，最终发送仍优先采用该文本，但不直接复用音频上传飞书", async () => {

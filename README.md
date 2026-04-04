@@ -10,6 +10,12 @@
 
 当前只支持源码安装。普通使用场景按下面这条默认流程走，不要混用 npm 包安装、`install -l` 或手动复制。
 
+插件运行主流程在所有平台统一走 Node 工具链：
+
+- TTS：`edge-tts` + `ffmpeg`
+- STT：`whisper` + `ffmpeg`
+- 仓库内 `scripts/*.sh` 仅保留给手工调试，不参与插件运行链路
+
 ### 1）放到默认扩展目录
 
 ```bash
@@ -41,8 +47,6 @@ openclaw plugins install ~/.openclaw/extensions/feishu-voice-bridge
 - `openclaw plugins install feishu-voice-bridge`
 - 任何 npm registry / tgz 包安装方式
 - `--dangerously-force-unsafe-install`
-
-当前版本包含脚本调用链路，OpenClaw 安装器会触发危险代码扫描；即使显式传入强制参数，实际安装链路里也仍然可能被拦截。
 
 ### 4）写入最小配置
 
@@ -85,7 +89,7 @@ OpenClaw 配置文件通常位于：
 说明：
 
 - `channels.feishu.appId` / `channels.feishu.appSecret` 必填
-- `messages.tts: false` 推荐配置，插件会使用自己的脚本链路完成语音合成
+- `messages.tts: false` 推荐配置，插件会使用自己的 Node 工具链完成语音合成
 - 超长文本走插件内置摘要逻辑
 
 ### 5）重启 OpenClaw
@@ -98,8 +102,6 @@ openclaw gateway restart
 
 ```bash
 cd ~/.openclaw/extensions/feishu-voice-bridge
-bash scripts/send_voice.sh -t "这是一条测试语音" --no-send -o /tmp/feishu-voice-test.opus
-test -f /tmp/feishu-voice-test.opus && echo "tts script ok"
 npm run check
 npm test
 openclaw plugins info feishu-voice-bridge
@@ -209,10 +211,12 @@ python3 --version
 ffmpeg -version
 ffprobe -version
 edge-tts --help >/dev/null && echo "edge-tts ok"
-whisper --help >/dev/null && echo "whisper ok"  # 可选
+whisper --help >/dev/null && echo "whisper ok"
 ```
 
-## 脚本自检
+## 手工调试脚本
+
+这些脚本仅用于本地手工调试，不属于插件运行主链路。
 
 ```bash
 # 测试语音合成：
@@ -230,7 +234,7 @@ bash scripts/openclaw_stt.sh /tmp/feishu-voice-test.opus
 - 插件未正确安装，或源码目录没有通过 `plugins.load.paths` 加入加载路径
 - 没配置 `channels.feishu.appId` / `channels.feishu.appSecret`
 - 改完配置没有重启 Gateway
-- 本机缺少 `ffmpeg` / `ffprobe` / `edge-tts`
+- 本机缺少 `ffmpeg` / `ffprobe` / `edge-tts` / `whisper`
 - 误以为 `.env.example` 会被自动加载
 
 ## 排查
@@ -252,7 +256,9 @@ openclaw status --all
 
 重点看这些日志关键词：
 
-- `runtime ready: nativeTts=...`
+- `runtime ready: tts=...`
+- `toolTts=...`
+- `toolStt=...`
 - `feishu-voice synthesized via OpenClaw TTS`
 - `feishu-voice transcribed via OpenClaw runtime`
 - `feishu-voice auto reply sent`

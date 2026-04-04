@@ -6,12 +6,6 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "scriptPath": {
-        "type": "string"
-      },
-      "sttScriptPath": {
-        "type": "string"
-      },
       "defaultVoice": {
         "type": "string"
       },
