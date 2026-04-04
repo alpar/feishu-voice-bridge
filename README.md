@@ -14,7 +14,7 @@
 
 - TTS：`edge-tts` + `ffmpeg`
 - STT：`whisper` + `ffmpeg`
-- 仓库内 `scripts/*.sh` 仅保留给手工调试，不参与插件运行链路
+- 仓库内调试脚本也统一为 Node 版本，不再依赖 Bash
 
 ### 1）放到默认扩展目录
 
@@ -220,11 +220,11 @@ whisper --help >/dev/null && echo "whisper ok"
 
 ```bash
 # 测试语音合成：
-bash scripts/send_voice.sh -t "这是一条测试语音" --no-send -o /tmp/feishu-voice-test.opus
+node scripts/send_voice.js -t "这是一条测试语音" --no-send -o /tmp/feishu-voice-test.opus
 test -f /tmp/feishu-voice-test.opus && echo "tts script ok"
 
 # Whisper 测试：
-bash scripts/openclaw_stt.sh /tmp/feishu-voice-test.opus
+node scripts/openclaw_stt.js /tmp/feishu-voice-test.opus
 ```
 
 ## 常见问题
@@ -271,7 +271,7 @@ openclaw status --all
 - `channels.feishu.appId`
 - `channels.feishu.appSecret`
 
-手工调用 `scripts/send_voice.sh` 时，还会读取：
+手工调用 `scripts/send_voice.js` 时，还会读取：
 
 - `FEISHU_APP_ID`
 - `FEISHU_APP_SECRET`

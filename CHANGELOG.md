@@ -1,5 +1,16 @@
 # 更新日志
 
+## 2026.4.4
+
+### Node 工具链统一
+
+- 插件主流程统一为“OpenClaw 原生 runtime 优先，Node 工具链兜底”，不再让 Bash 脚本参与运行链路。
+- 新增 `lib/toolchain.js`，统一由 Node 调用 `edge-tts`、`ffmpeg`、`whisper`。
+- 运行时探测日志改为只输出 `toolTts` / `toolStt`，移除旧的脚本链路状态字段。
+- 删除插件配置中的 `scriptPath` / `sttScriptPath`，同步收口 `openclaw.plugin.json` 与配置解析逻辑。
+- 将仓库内调试脚本从 `scripts/*.sh` 迁移为 `scripts/*.js`，彻底去掉仓库内的 Bash 依赖。
+- 更新 README、贡献说明与回归测试，`npm run check`、`npm test` 均已通过。
+
 ## 2026.3.31
 
 ### 原生能力对齐重构
