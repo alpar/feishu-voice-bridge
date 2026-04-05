@@ -141,9 +141,11 @@ async function runVoiceToTextCli(argv = process.argv.slice(2)) {
     });
 
     if (options.output.trim()) {
-      fs.writeFileSync(options.output.trim(), `${result.text}\n`, "utf8");
+      const outputPath = path.resolve(options.output.trim());
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      fs.writeFileSync(outputPath, `${result.text}\n`, "utf8");
       if (!options.stdoutOnly) {
-        console.error(`✅ 文本已保存到：${options.output.trim()}`);
+        console.error(`✅ 文本已保存到：${outputPath}`);
       }
     }
 

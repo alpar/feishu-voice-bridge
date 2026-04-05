@@ -36,6 +36,14 @@ python3 -m pip install edge-tts
 python3 -m pip install openai-whisper
 ```
 
+Windows 参考：
+
+- 先安装 Node.js 20+
+- 用 `winget install Gyan.FFmpeg` 或其他方式安装 `ffmpeg` / `ffprobe`
+- 确认 Python 和 `pip` 可用
+- 执行 `py -m pip install edge-tts openai-whisper`
+- 安装完成后重新打开 PowerShell，确保 `ffmpeg`、`ffprobe`、`edge-tts`、`whisper` 都在 `PATH` 中
+
 ### 3）安装插件
 
 ```bash
@@ -54,6 +62,12 @@ OpenClaw 配置文件通常位于：
 
 ```bash
 ~/.openclaw/openclaw.json
+```
+
+Windows 常见路径：
+
+```powershell
+$HOME\.openclaw\openclaw.json
 ```
 
 最小可运行配置：
@@ -97,6 +111,45 @@ OpenClaw 配置文件通常位于：
 ```bash
 openclaw gateway restart
 ```
+
+如果是从旧版本升级，且你曾在 `openclaw.json` 里手工配置过：
+
+```json5
+tools.media.audio.models
+```
+
+请确认里面已经不再指向旧的 Bash 脚本，而是改成 Node 版本：
+
+```json5
+{
+  tools: {
+    media: {
+      audio: {
+        models: [
+          {
+            type: "cli",
+            command: "node",
+            args: [
+              "/path/to/feishu-voice-bridge/scripts/openclaw_stt.js",
+              "{{MediaPath}}"
+            ],
+            timeoutSeconds: 20
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+旧配置如果仍然是：
+
+```json5
+command: "bash"
+args: ["/path/to/scripts/openclaw_stt.sh", "{{MediaPath}}"]
+```
+
+升级后会直接导致 STT 链路失效。
 
 ### 6）验证
 
@@ -214,6 +267,16 @@ edge-tts --help >/dev/null && echo "edge-tts ok"
 whisper --help >/dev/null && echo "whisper ok"
 ```
 
+Windows PowerShell 参考：
+
+```powershell
+py --version
+ffmpeg -version
+ffprobe -version
+edge-tts --help
+whisper --help
+```
+
 ## 手工调试脚本
 
 这些脚本仅用于本地手工调试，不属于插件运行主链路。
@@ -227,6 +290,14 @@ test -f /tmp/feishu-voice-test.opus && echo "tts script ok"
 node scripts/openclaw_stt.js /tmp/feishu-voice-test.opus
 ```
 
+Windows PowerShell 参考：
+
+```powershell
+node scripts/send_voice.js -t "这是一条测试语音" --no-send -o "$env:TEMP\\feishu-voice-test.opus"
+Test-Path "$env:TEMP\\feishu-voice-test.opus"
+node scripts/openclaw_stt.js "$env:TEMP\\feishu-voice-test.opus"
+```
+
 ## 常见问题
 
 - 拉了代码但没执行 `openclaw plugins install <path>`
@@ -235,6 +306,7 @@ node scripts/openclaw_stt.js /tmp/feishu-voice-test.opus
 - 没配置 `channels.feishu.appId` / `channels.feishu.appSecret`
 - 改完配置没有重启 Gateway
 - 本机缺少 `ffmpeg` / `ffprobe` / `edge-tts` / `whisper`
+- 旧版 `tools.media.audio.models` 仍然指向 `openclaw_stt.sh`
 - 误以为 `.env.example` 会被自动加载
 
 ## 排查

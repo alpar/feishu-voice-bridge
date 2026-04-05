@@ -7,7 +7,7 @@ const plugin = require("./index.js");
 const packageJson = require("./package.json");
 const { resolveSpeechOptions } = require("./lib/config");
 const { buildMediaUnderstandingProvider, buildProvider } = require("./lib/providers");
-const { createPluginRuntime } = require("./lib/runtime");
+const { commandExists, createPluginRuntime } = require("./lib/runtime");
 
 const {
   extractAssistantTextFromAgentMessage,
@@ -838,6 +838,39 @@ test("createPluginRuntime 会识别原生 STT 与原生摘要能力", () => {
   assert.equal(runtime.hasNativeStt, true);
   assert.equal(typeof runtime.summary.stt, "string");
   assert.equal(runtime.summary.stt, "native:media-understanding");
+});
+
+test("commandExists 在 Windows 上会使用 where.exe 探测命令", () => {
+  let calledCommand = "";
+  let calledArgs = null;
+
+  const exists = commandExists("ffmpeg", {
+    platform: "win32",
+    execFileSyncImpl(command, args) {
+      calledCommand = command;
+      calledArgs = args;
+      return Buffer.from("");
+    }
+  });
+
+  assert.equal(exists, true);
+  assert.equal(calledCommand, "where.exe");
+  assert.deepEqual(calledArgs, ["ffmpeg"]);
+});
+
+test("commandExists 在非 Windows 平台上继续使用 which", () => {
+  let calledCommand = "";
+
+  const exists = commandExists("ffprobe", {
+    platform: "darwin",
+    execFileSyncImpl(command) {
+      calledCommand = command;
+      return Buffer.from("");
+    }
+  });
+
+  assert.equal(exists, true);
+  assert.equal(calledCommand, "which");
 });
 
 test("createPluginRuntime 会给缺失外部依赖生成告警", () => {

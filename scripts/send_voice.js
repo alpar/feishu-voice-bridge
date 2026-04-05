@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
@@ -123,7 +124,7 @@ function readJsonFile(filePath) {
 }
 
 function resolveOpenClawJsonPath() {
-  return process.env.OPENCLAW_JSON || path.join(process.env.HOME || "", ".openclaw", "openclaw.json");
+  return process.env.OPENCLAW_JSON || path.join(os.homedir(), ".openclaw", "openclaw.json");
 }
 
 function buildGatewayConfigFromEnv() {

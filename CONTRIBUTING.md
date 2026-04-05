@@ -44,6 +44,7 @@ npm run check
 
 - 修改 `index.js` 中的桥接逻辑后，至少运行一次 `npm test`。
 - 修改调试脚本参数或帮助文本后，检查 `README.md` 中的示例是否仍然准确。
+- 如果改动会影响 `openclaw.json` 中 `tools.media.audio.models` 的 CLI 配置格式，请同步补充升级迁移说明。
 - 如果修复的是飞书语音时序问题，建议补一条对应的回归测试。
 
 ## 发布前检查
