@@ -840,6 +840,43 @@ test("createPluginRuntime 会识别原生 STT 与原生摘要能力", () => {
   assert.equal(runtime.summary.stt, "native:media-understanding");
 });
 
+test("createPluginRuntime 在注册期不会主动加载 OpenClaw speech runtime", () => {
+  let loadCount = 0;
+  const runtime = createPluginRuntime({
+    gatewayConfig: {
+      messages: {
+        tts: {}
+      }
+    }
+  }, null, {
+    commandExists() {
+      return false;
+    },
+    loadSpeechRuntime() {
+      loadCount += 1;
+      return {
+        _test: {
+          summarizeText() {}
+        }
+      };
+    },
+    resolvePreferredNativeTtsProvider() {
+      return "microsoft";
+    }
+  });
+
+  assert.equal(loadCount, 0);
+  assert.equal(runtime.hasNativeTts, false);
+  assert.equal(runtime.summary.summary, "native:deferred");
+
+  runtime.ensureNativeCapabilities();
+
+  assert.equal(loadCount, 1);
+  assert.equal(runtime.hasNativeTts, true);
+  assert.equal(runtime.summary.tts, "native:microsoft");
+  assert.equal(runtime.summary.summary, "native:tts-summary");
+});
+
 test("commandExists 在 Windows 上会使用 where.exe 探测命令", () => {
   let calledCommand = "";
   let calledArgs = null;
@@ -888,10 +925,10 @@ test("createPluginRuntime 会给缺失外部依赖生成告警", () => {
   assert.equal(runtime.hasEdgeTts, false);
   assert.equal(runtime.hasWhisper, false);
   assert.deepEqual(runtime.dependencyWarnings, [
-    "local TTS toolchain requires `edge-tts`",
-    "local TTS toolchain requires `ffmpeg`",
-    "local STT toolchain requires `whisper`",
-    "local STT toolchain requires `ffmpeg`"
+    "local TTS toolchain disabled: `edge-tts` unavailable",
+    "local TTS toolchain disabled: `ffmpeg` unavailable",
+    "local STT toolchain disabled: `whisper` unavailable",
+    "local STT toolchain disabled: `ffmpeg` unavailable"
   ]);
 });
 

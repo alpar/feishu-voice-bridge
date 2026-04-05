@@ -11,6 +11,15 @@
 - 将仓库内调试脚本从 `scripts/*.sh` 迁移为 `scripts/*.js`，彻底去掉仓库内的 Bash 依赖。
 - 更新 README、贡献说明与回归测试，`npm run check`、`npm test` 均已通过。
 
+### 兼容性与稳定性补充
+
+- 修复 Windows 下命令探测仍使用 `which` 的问题，改为按平台自动选择 `where.exe` / `which`，避免误判 `ffmpeg`、`ffprobe`、`edge-tts`、`whisper` 缺失。
+- 调整调试脚本的默认配置路径解析，统一改为基于 Node `os.homedir()`，避免 Windows 环境下依赖 `HOME` 变量。
+- 为 `voice_to_text.js` 补充输出目录自动创建，减少跨平台调试时因目标目录不存在导致的失败。
+- 补充 README 中的 Windows 安装、自检、调试命令，以及旧版 `tools.media.audio.models` 从 `.sh` 迁移到 `.js` 的升级说明。
+- 修复插件在 `register()` 阶段就主动加载 OpenClaw speech runtime 导致的递归/自引用问题，改为懒加载并增加重入保护，避免 `RangeError: Maximum call stack size exceeded` 和重复 `runtime ready` 日志。
+- 为注册期懒加载和跨平台命令探测补充回归测试，确保原生 TTS / 摘要能力只在实际需要时再探测。
+
 ## 2026.3.31
 
 ### 原生能力对齐重构
