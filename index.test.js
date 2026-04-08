@@ -9,6 +9,7 @@ const pluginManifest = require("./openclaw.plugin.json");
 const { resolveSpeechOptions } = require("./lib/config");
 const { buildMediaUnderstandingProvider, buildProvider } = require("./lib/providers");
 const { createVoiceReplyExecutor } = require("./lib/voice-reply-executor");
+const { chooseBestReply, resolveAudioArtifactForSend } = require("./lib/voice-reply-selection");
 const { commandExists, createPluginRuntime } = require("./lib/runtime");
 
 const {
@@ -561,6 +562,27 @@ test("mergeVoiceReplyCandidate 对同源 authoritative 文本更新采用后到�
 
   assert.equal(merged.text, "老板，最终结果已经查到了。");
   assert.equal(merged.source, "assistant_message");
+});
+
+test("chooseBestReply 会让最终正文覆盖进度型 fallback", () => {
+  const selection = chooseBestReply(
+    { text: "已经完成清理，未发现残留。", source: "assistant_message" },
+    { text: "正在处理中，请稍候。", source: "message_sent" },
+    null,
+    { maxCapturedReplyChars: 4000 }
+  );
+
+  assert.equal(selection.reason, "preferred_overrode_progress_fallback");
+  assert.equal(selection.reply?.text, "已经完成清理，未发现残留。");
+});
+
+test("resolveAudioArtifactForSend 会屏蔽 tts-tool 原始音频复用", () => {
+  assert.equal(resolveAudioArtifactForSend({
+    audio: { source: "tts-tool", filePath: "/tmp/reply.wav" }
+  }), null);
+  assert.deepEqual(resolveAudioArtifactForSend({
+    audio: { source: "openclaw-native", filePath: "/tmp/reply.wav" }
+  }), { source: "openclaw-native", filePath: "/tmp/reply.wav" });
 });
 
 test("prepareVoiceReplyText 对短回复保持原文，不生成摘要", async () => {
