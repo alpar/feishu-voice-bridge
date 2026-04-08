@@ -2880,6 +2880,54 @@ test("新入站会清掉同目标的旧 pending，避免沿用上一轮 fallback
   assert.ok(infos.some((line) => line.includes("reply decision") && line.includes("selected=message_sent") && line.includes("evomap")));
 });
 
+test("重复 message_received 不会清掉当前轮 assistant fallback pending", async () => {
+  const infos = [];
+  const sends = [];
+  const api = createApi({
+    info(message) {
+      infos.push(String(message));
+    }
+  });
+
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplyDebounceMs: 0
+  }), {
+    sendVoiceReplyImpl: async (_config, _logger, params) => {
+      sends.push(params);
+      return true;
+    }
+  });
+
+  const ctx = createCtx({
+    runId: "run-dup-message-received"
+  });
+  const inboundEvent = createInboundEvent({
+    messageId: "om_dup_test",
+    body: "{\"file_key\":\"file_v3_dup_demo\",\"duration\":4000}"
+  });
+
+  emit(api, "message_received", inboundEvent, ctx);
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "这是 assistant 兜底回复" }]
+    }
+  }, ctx);
+
+  emit(api, "message_received", inboundEvent, ctx);
+
+  await emit(api, "agent_end", {
+    success: true
+  }, ctx);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].text, "这是 assistant 兜底回复");
+  assert.ok(infos.some((line) => line.includes("skipped duplicate inbound lifecycle event") && line.includes("om_dup_test")));
+  assert.ok(!infos.some((line) => line.includes("cleared stale pending reply") && line.includes("run-dup-message-received")));
+});
+
 test("run-only 弱路由回退不会复用上一轮 pending 的 fallback 文本", async () => {
   const api = createApi();
   const timers = createTimerHarness();
