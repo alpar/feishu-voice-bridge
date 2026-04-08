@@ -2833,6 +2833,61 @@ test("新入站会清掉同目标的旧 pending，避免沿用上一轮 fallback
   assert.ok(infos.some((line) => line.includes("reply decision") && line.includes("selected=message_sent") && line.includes("evomap")));
 });
 
+test("run-only 弱路由回退不会复用上一轮 pending 的 fallback 文本", async () => {
+  const api = createApi();
+  const timers = createTimerHarness();
+  const sends = [];
+
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplyDebounceMs: 0
+  }), {
+    clearTimer: timers.clearTimer,
+    sendVoiceReplyImpl: async (_config, _logger, params) => {
+      sends.push(params);
+      return true;
+    },
+    setTimer: timers.setTimer
+  });
+
+  emit(api, "inbound_claim", createInboundEvent({
+    messageId: "om_old_sparse"
+  }), createCtx({
+    sessionKey: "agent:test:feishu:old:ou_test_user"
+  }));
+  emit(api, "message_sent", {
+    success: true,
+    text: "这是上一轮 CM 学习汇报摘要推送",
+    to: "user:ou_test_user"
+  }, createCtx({
+    sessionKey: "agent:test:feishu:old:ou_test_user"
+  }));
+
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "我现在开始清理 evomap。" }]
+    }
+  }, {
+    accountId: "default",
+    channelId: "feishu",
+    runId: "run-only-new"
+  });
+
+  emit(api, "agent_end", {
+    success: true
+  }, {
+    accountId: "default",
+    channelId: "feishu",
+    runId: "run-only-new"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sends.length, 1);
+  assert.match(sends[0].text, /evomap/u);
+  assert.doesNotMatch(sends[0].text, /CM 学习汇报摘要推送/u);
+});
+
 test("单独的 tts 工具调用不再直接驱动自动语音回复", async () => {
   const api = createApi();
   const timers = createTimerHarness();
