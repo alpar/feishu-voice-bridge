@@ -2928,8 +2928,13 @@ test("重复 message_received 不会清掉当前轮 assistant fallback pending",
   assert.ok(!infos.some((line) => line.includes("cleared stale pending reply") && line.includes("run-dup-message-received")));
 });
 
-test("run-only 弱路由回退不会复用上一轮 pending 的 fallback 文本", async () => {
-  const api = createApi();
+test("run-only 弱路由回退不会再创建新的待发送语音", async () => {
+  const infos = [];
+  const api = createApi({
+    info(message) {
+      infos.push(String(message));
+    }
+  });
   const timers = createTimerHarness();
   const sends = [];
 
@@ -2978,9 +2983,35 @@ test("run-only 弱路由回退不会复用上一轮 pending 的 fallback 文本"
   });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(sends.length, 1);
-  assert.match(sends[0].text, /evomap/u);
-  assert.doesNotMatch(sends[0].text, /CM 学习汇报摘要推送/u);
+  assert.equal(sends.length, 0);
+  assert.ok(infos.some((line) => line.includes("latest_route is observation-only") && line.includes("run-only-new")));
+});
+
+test("latest_route 不会误把当前 run 当成语音入站会话去拦截 tts 工具", () => {
+  const api = createApi();
+
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplyDebounceMs: 0
+  }));
+
+  emit(api, "inbound_claim", createInboundEvent({
+    messageId: "om_old_voice_route",
+    body: "{\"file_key\":\"file_v3_old_voice_demo\",\"duration\":4000}"
+  }), createCtx({
+    sessionKey: "agent:test:feishu:old:ou_test_user"
+  }));
+
+  const result = emit(api, "before_tool_call", {
+    toolName: "tts",
+    params: { text: "当前 run 的普通文本朗读" }
+  }, {
+    accountId: "default",
+    channelId: "feishu",
+    runId: "run-only-tool-call"
+  });
+
+  assert.equal(result, undefined);
 });
 
 test("单独的 tts 工具调用不再直接驱动自动语音回复", async () => {
