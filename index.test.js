@@ -2761,7 +2761,12 @@ test("assistant_message 可以通过 target 别名合并到已有待发送回复
 });
 
 test("新入站会清掉同目标的旧 pending，避免沿用上一轮 fallback 文本", async () => {
-  const api = createApi();
+  const infos = [];
+  const api = createApi({
+    info(message) {
+      infos.push(String(message));
+    }
+  });
   const timers = createTimerHarness();
   const sends = [];
 
@@ -2824,6 +2829,8 @@ test("新入站会清掉同目标的旧 pending，避免沿用上一轮 fallback
   assert.equal(sends.length, 1);
   assert.match(sends[0].text, /evomap/u);
   assert.doesNotMatch(sends[0].text, /CM 学习汇报摘要推送/u);
+  assert.ok(infos.some((line) => line.includes("cleared stale pending reply") && line.includes("CM 学习汇报摘要推送")));
+  assert.ok(infos.some((line) => line.includes("reply decision") && line.includes("selected=message_sent") && line.includes("evomap")));
 });
 
 test("单独的 tts 工具调用不再直接驱动自动语音回复", async () => {
