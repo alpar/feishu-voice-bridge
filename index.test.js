@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const plugin = require("./index.js");
 const packageJson = require("./package.json");
+const pluginManifest = require("./openclaw.plugin.json");
 const { resolveSpeechOptions } = require("./lib/config");
 const { buildMediaUnderstandingProvider, buildProvider } = require("./lib/providers");
 const { commandExists, createPluginRuntime } = require("./lib/runtime");
@@ -17,7 +18,9 @@ const {
   isVoiceInboundEvent,
   mergeVoiceReplyCandidate,
   prepareVoiceReplyText,
+  pruneStaleVoiceReplyState,
   resolvePluginConfig,
+  getSharedVoiceReplyStore,
   resetSharedVoiceReplyStore,
   synthesizeVoiceAudio,
   shouldSkipVoiceReplyText,
@@ -743,6 +746,43 @@ test("resolvePluginConfig 不再暴露旧脚本路径配置", () => {
   assert.equal(cfg.defaultVoice, "zh-CN-YunxiNeural");
 });
 
+test("openclaw.plugin.json 会声明运行时实际支持的语音回复配置项", () => {
+  const properties = pluginManifest?.configSchema?.properties || {};
+
+  assert.equal(properties.enableBeforeAgentReply?.type, "boolean");
+  assert.equal(properties.voiceReplyTextSendingFallbackMs?.type, "number");
+  assert.equal(properties.voiceReplyNoTextFallbackMs?.type, "number");
+  assert.equal(properties.voiceReplyAssistantSettleMs?.type, "number");
+  assert.deepEqual(pluginManifest?.contracts?.speechProviders, ["feishu-voice"]);
+  assert.deepEqual(pluginManifest?.contracts?.mediaUnderstandingProviders, ["feishu-voice"]);
+  assert.equal(pluginManifest?.uiHints?.enableBeforeAgentReply?.advanced, true);
+});
+
+test("pruneStaleVoiceReplyState 会清理过期的路由与会话索引", () => {
+  const store = getSharedVoiceReplyStore();
+  const staleTs = Date.now() - (2 * 60 * 60 * 1000);
+
+  store.stateByConversation.set("default:ou_old", { lastInboundAt: staleTs, updatedAt: staleTs });
+  store.latestInboundByTarget.set("default:ou_old", { lastInboundAt: staleTs, updatedAt: staleTs });
+  store.latestRouteByAccount.set("default", { target: "ou_old", updatedAt: staleTs });
+  store.routeByRunId.set("run-old", { target: "ou_old", updatedAt: staleTs });
+  store.sessionTargetBySessionKey.set("session-old", { target: "ou_old", updatedAt: staleTs });
+  store.textSentBySessionKey.set("session-old", staleTs);
+  store.transcriptEchoSkippedBySessionKey.set("session-old", staleTs);
+  store.transcriptEchoTextBySessionKey.set("session-old", "旧转写");
+
+  pruneStaleVoiceReplyState(store, Date.now(), 60 * 60 * 1000);
+
+  assert.equal(store.stateByConversation.has("default:ou_old"), false);
+  assert.equal(store.latestInboundByTarget.has("default:ou_old"), false);
+  assert.equal(store.latestRouteByAccount.has("default"), false);
+  assert.equal(store.routeByRunId.has("run-old"), false);
+  assert.equal(store.sessionTargetBySessionKey.has("session-old"), false);
+  assert.equal(store.textSentBySessionKey.has("session-old"), false);
+  assert.equal(store.transcriptEchoSkippedBySessionKey.has("session-old"), false);
+  assert.equal(store.transcriptEchoTextBySessionKey.has("session-old"), false);
+});
+
 test("synthesizeVoiceAudio 缺少本地工具链时不会泄露内部细节", () => {
   assert.throws(() => synthesizeVoiceAudio({
     runtime: {
@@ -830,7 +870,7 @@ test("createPluginRuntime 会识别原生 STT 与原生摘要能力", () => {
   const runtime = createPluginRuntime({
     gatewayConfig: {}
   }, {
-    stt: {
+    mediaUnderstanding: {
       transcribeAudioFile: async () => ({ text: "ok" })
     }
   });
@@ -945,7 +985,7 @@ test("buildMediaUnderstandingProvider 优先使用 OpenClaw 原生 STT runtime",
     hasNativeStt: true,
     hasToolStt: false,
     coreRuntime: {
-      stt: {
+      mediaUnderstanding: {
         transcribeAudioFile: async ({ filePath, cfg, mime }) => {
           assert.equal(typeof filePath, "string");
           assert.equal(typeof cfg, "object");
@@ -965,6 +1005,33 @@ test("buildMediaUnderstandingProvider 优先使用 OpenClaw 原生 STT runtime",
 
   assert.equal(result.text, "这是原生转写结果");
   assert.equal(result.model, "openclaw:media-understanding");
+});
+
+test("buildMediaUnderstandingProvider 会兼容旧版 runtime.stt 别名", async () => {
+  const provider = buildMediaUnderstandingProvider({
+    gatewayConfig: {},
+    sttLanguage: "zh-CN",
+    sttModel: "small"
+  }, {
+    info() {},
+    warn() {},
+    error() {}
+  }, {
+    hasNativeStt: true,
+    hasToolStt: false,
+    coreRuntime: {
+      stt: {
+        transcribeAudioFile: async () => ({ text: "兼容别名转写结果" })
+      }
+    }
+  });
+
+  const result = await provider.transcribeAudio({
+    buffer: Buffer.from([1, 2, 3, 4]),
+    fileName: "voice.ogg"
+  });
+
+  assert.equal(result.text, "兼容别名转写结果");
 });
 
 test("buildMediaUnderstandingProvider 原生不可用时会回退到本地工具链", async () => {
@@ -2691,6 +2758,72 @@ test("assistant_message 可以通过 target 别名合并到已有待发送回复
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(sends.length, 1);
   assert.equal(sends[0].text, "老板，查到最终结果了。");
+});
+
+test("新入站会清掉同目标的旧 pending，避免沿用上一轮 fallback 文本", async () => {
+  const api = createApi();
+  const timers = createTimerHarness();
+  const sends = [];
+
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "inbound"
+  }), {
+    clearTimer: timers.clearTimer,
+    sendVoiceReplyImpl: async (_config, _logger, params) => {
+      sends.push(params);
+      return true;
+    },
+    setTimer: timers.setTimer
+  });
+
+  emit(api, "inbound_claim", createInboundEvent({
+    messageId: "om_old_inbound",
+    body: "{\"file_key\":\"file_v3_old_demo\",\"duration\":4000}"
+  }), createCtx({
+    sessionKey: "agent:test:feishu:old:ou_test_user"
+  }));
+  emit(api, "message_sent", {
+    success: true,
+    text: "这是上一轮 CM 学习汇报摘要推送",
+    to: "user:ou_test_user"
+  }, createCtx({
+    sessionKey: "agent:test:feishu:old:ou_test_user"
+  }));
+
+  emit(api, "inbound_claim", createInboundEvent({
+    messageId: "om_new_inbound",
+    body: "{\"file_key\":\"file_v3_new_demo\",\"duration\":4000}"
+  }), createCtx({
+    sessionKey: "agent:test:feishu:new:ou_test_user"
+  }));
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "我先帮您清理 evomap。" }]
+    }
+  }, {
+    accountId: "default",
+    sessionKey: "agent:test:feishu:new:ou_test_user"
+  });
+  emit(api, "message_sent", {
+    success: true,
+    text: "📝 请帮我清理 evomap",
+    to: "user:ou_test_user"
+  }, createCtx({
+    sessionKey: "agent:test:feishu:new:ou_test_user"
+  }));
+
+  emit(api, "agent_end", {
+    success: true
+  }, {
+    runId: "run-clean-evomap",
+    sessionKey: "agent:test:feishu:new:ou_test_user"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sends.length, 1);
+  assert.match(sends[0].text, /evomap/u);
+  assert.doesNotMatch(sends[0].text, /CM 学习汇报摘要推送/u);
 });
 
 test("单独的 tts 工具调用不再直接驱动自动语音回复", async () => {

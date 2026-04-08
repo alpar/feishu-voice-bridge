@@ -2,6 +2,14 @@
   "id": "feishu-voice-bridge",
   "name": "飞书语音桥接插件（STT + TTS）",
   "description": "OpenClaw 原生飞书语音桥接插件，提供本地 STT、TTS 与官方语音链路兼容能力。",
+  "contracts": {
+    "speechProviders": [
+      "feishu-voice"
+    ],
+    "mediaUnderstandingProviders": [
+      "feishu-voice"
+    ]
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -50,35 +58,163 @@
       },
       "voiceReplyDebounceMs": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 2500
+      },
+      "voiceReplyTextSendingFallbackMs": {
+        "type": "number",
+        "minimum": 0,
+        "default": 1500
+      },
+      "voiceReplyNoTextFallbackMs": {
+        "type": "number",
+        "minimum": 0,
+        "default": 3000
+      },
+      "voiceReplyAssistantSettleMs": {
+        "type": "number",
+        "minimum": 0,
+        "default": 8000
       },
       "voiceReplyRetryCount": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 2
       },
       "voiceReplyRetryBackoffMs": {
         "type": "number",
-        "minimum": 0
+        "minimum": 0,
+        "default": 5000
       },
       "promptToolTtsForText": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": false
+      },
+      "enableBeforeAgentReply": {
+        "type": "boolean",
+        "default": false
       },
       "voiceReplySummaryEnabled": {
-        "type": "boolean"
+        "type": "boolean",
+        "default": true
       },
       "voiceReplySummaryMaxSentences": {
         "type": "number",
-        "minimum": 1
+        "minimum": 1,
+        "default": 3
       },
       "voiceReplySummaryJoiner": {
-        "type": "string"
+        "type": "string",
+        "default": "；"
       },
       "voiceReplySummaryPrefix": {
-        "type": "string"
+        "type": "string",
+        "default": "语音摘要："
       },
       "voiceReplySummarySuffix": {
-        "type": "string"
+        "type": "string",
+        "default": "（完整内容请查看文字回复）"
       }
+    }
+  },
+  "uiHints": {
+    "defaultVoice": {
+      "label": "默认语音",
+      "help": "本地 edge-tts 或宿主 TTS 未覆盖时使用的默认 voice id。",
+      "placeholder": "zh-CN-XiaoxiaoNeural"
+    },
+    "defaultRate": {
+      "label": "默认语速",
+      "help": "支持 +20、-10 这类 edge-tts 风格值。"
+    },
+    "defaultPitch": {
+      "label": "默认音高",
+      "help": "支持 0、+2、-2 这类值。"
+    },
+    "sttLanguage": {
+      "label": "转写语言",
+      "help": "本地 Whisper 兜底链路使用的语言。",
+      "placeholder": "zh-CN"
+    },
+    "sttModel": {
+      "label": "Whisper 模型",
+      "help": "仅用于本地 Whisper 兜底转写，例如 small、medium。"
+    },
+    "voiceReplyEnabled": {
+      "label": "启用自动语音回复"
+    },
+    "voiceReplyMode": {
+      "label": "自动语音回复模式",
+      "help": "推荐 inbound，仅在最近一次飞书入站后的窗口内补发语音。"
+    },
+    "voiceReplyWindowMs": {
+      "label": "回复窗口毫秒数",
+      "advanced": true
+    },
+    "voiceReplyCooldownMs": {
+      "label": "语音冷却毫秒数",
+      "advanced": true
+    },
+    "maxReplyChars": {
+      "label": "最长朗读字符数",
+      "advanced": true
+    },
+    "maxCapturedReplyChars": {
+      "label": "最大缓存字符数",
+      "advanced": true
+    },
+    "voiceReplyDebounceMs": {
+      "label": "发送防抖毫秒数",
+      "advanced": true
+    },
+    "voiceReplyTextSendingFallbackMs": {
+      "label": "message_sending 兜底延迟",
+      "advanced": true
+    },
+    "voiceReplyNoTextFallbackMs": {
+      "label": "无文本钩子兜底延迟",
+      "advanced": true
+    },
+    "voiceReplyAssistantSettleMs": {
+      "label": "Assistant 收敛等待毫秒数",
+      "advanced": true
+    },
+    "voiceReplyRetryCount": {
+      "label": "后台重试次数",
+      "advanced": true
+    },
+    "voiceReplyRetryBackoffMs": {
+      "label": "后台重试退避毫秒数",
+      "advanced": true
+    },
+    "promptToolTtsForText": {
+      "label": "允许提示使用 tts 工具",
+      "help": "默认关闭，避免和插件自己的异步语音发送链路冲突。",
+      "advanced": true
+    },
+    "enableBeforeAgentReply": {
+      "label": "启用 before_agent_reply",
+      "help": "宿主支持时可更早捕获最终文本。",
+      "advanced": true
+    },
+    "voiceReplySummaryEnabled": {
+      "label": "启用长文本摘要朗读"
+    },
+    "voiceReplySummaryMaxSentences": {
+      "label": "摘要最多句数",
+      "advanced": true
+    },
+    "voiceReplySummaryJoiner": {
+      "label": "摘要连接符",
+      "advanced": true
+    },
+    "voiceReplySummaryPrefix": {
+      "label": "摘要前缀",
+      "advanced": true
+    },
+    "voiceReplySummarySuffix": {
+      "label": "摘要后缀",
+      "advanced": true
     }
   }
 }

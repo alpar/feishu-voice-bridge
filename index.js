@@ -15,7 +15,7 @@ const {
 const { buildMediaUnderstandingProvider, buildProvider } = require("./lib/providers");
 const { isFeishuChannelContext, isVoiceInboundEvent } = require("./lib/feishu");
 const { registerVoiceReplyHooks } = require("./lib/voice-reply-hooks");
-const { resetSharedVoiceReplyStore } = require("./lib/voice-reply-store");
+const { getSharedVoiceReplyStore, pruneStaleVoiceReplyState, resetSharedVoiceReplyStore } = require("./lib/voice-reply-store");
 
 // 入口只做装配，业务逻辑都放在 lib/。
 const plugin = {
@@ -49,8 +49,11 @@ module.exports.__private = {
   loadGeneratedAudioArtifact,
   mergeVoiceReplyCandidate,
   prepareVoiceReplyText,
+  pruneStaleVoiceReplyState,
+  createPluginRuntime,
   isVoiceInboundEvent,
   resolvePluginConfig,
+  getSharedVoiceReplyStore,
   shouldSkipVoiceReplyText,
   registerVoiceReplyHooks,
   synthesizeVoiceAudio,
