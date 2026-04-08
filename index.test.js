@@ -17,6 +17,7 @@ const {
   loadGeneratedAudioArtifact,
   isVoiceInboundEvent,
   mergeVoiceReplyCandidate,
+  prunePendingVoiceReplyState,
   prepareVoiceReplyText,
   pruneStaleVoiceReplyState,
   resolvePluginConfig,
@@ -24,7 +25,9 @@ const {
   resetSharedVoiceReplyStore,
   synthesizeVoiceAudio,
   shouldSkipVoiceReplyText,
-  registerVoiceReplyHooks
+  registerVoiceReplyHooks,
+  VOICE_REPLY_STATE_LIMITS,
+  VOICE_REPLY_STATE_TTL_MS
 } = plugin.__private;
 
 function createApi(loggerOverrides = {}) {
@@ -759,7 +762,7 @@ test("openclaw.plugin.json 会声明运行时实际支持的语音回复配置�
 });
 
 test("pruneStaleVoiceReplyState 会清理过期的路由与会话索引", () => {
-  const store = getSharedVoiceReplyStore();
+  const store = resetSharedVoiceReplyStore();
   const staleTs = Date.now() - (2 * 60 * 60 * 1000);
 
   store.stateByConversation.set("default:ou_old", { lastInboundAt: staleTs, updatedAt: staleTs });
@@ -781,6 +784,50 @@ test("pruneStaleVoiceReplyState 会清理过期的路由与会话索引", () => 
   assert.equal(store.textSentBySessionKey.has("session-old"), false);
   assert.equal(store.transcriptEchoSkippedBySessionKey.has("session-old"), false);
   assert.equal(store.transcriptEchoTextBySessionKey.has("session-old"), false);
+});
+
+test("pruneStaleVoiceReplyState 会按容量上限回收最旧的长生命周期索引", () => {
+  const store = resetSharedVoiceReplyStore();
+  const now = Date.now();
+
+  for (let index = 0; index < VOICE_REPLY_STATE_LIMITS.routeByRunId + 5; index += 1) {
+    const updatedAt = now + index;
+    store.routeByRunId.set(`run-${index}`, { target: `ou_route_${index}`, updatedAt });
+  }
+  for (let index = 0; index < VOICE_REPLY_STATE_LIMITS.sessionTargetBySessionKey + 5; index += 1) {
+    const updatedAt = now + index;
+    store.sessionTargetBySessionKey.set(`session-${index}`, { target: `ou_session_${index}`, updatedAt });
+  }
+
+  pruneStaleVoiceReplyState(store, now, VOICE_REPLY_STATE_TTL_MS);
+
+  assert.equal(store.routeByRunId.size, VOICE_REPLY_STATE_LIMITS.routeByRunId);
+  assert.equal(store.sessionTargetBySessionKey.size, VOICE_REPLY_STATE_LIMITS.sessionTargetBySessionKey);
+  assert.equal(store.routeByRunId.has("run-0"), false);
+  assert.equal(store.routeByRunId.has(`run-${VOICE_REPLY_STATE_LIMITS.routeByRunId + 4}`), true);
+  assert.equal(store.sessionTargetBySessionKey.has("session-0"), false);
+  assert.equal(store.sessionTargetBySessionKey.has(`session-${VOICE_REPLY_STATE_LIMITS.sessionTargetBySessionKey + 4}`), true);
+});
+
+test("prunePendingVoiceReplyState 会清理过期 pending 与别名映射", () => {
+  const store = resetSharedVoiceReplyStore();
+  const staleTs = Date.now() - (2 * VOICE_REPLY_STATE_TTL_MS);
+
+  store.pendingRunVoiceByKey.set("run-old", {
+    target: "ou_old",
+    sessionKey: "session-old",
+    aliases: ["run:run-old", "session:session-old"],
+    lastAssistantMessageAt: staleTs
+  });
+  store.pendingRunAliasToKey.set("run:run-old", "run-old");
+  store.pendingRunAliasToKey.set("session:session-old", "run-old");
+
+  const removed = prunePendingVoiceReplyState(store, Date.now(), VOICE_REPLY_STATE_TTL_MS);
+
+  assert.deepEqual(removed, ["run-old"]);
+  assert.equal(store.pendingRunVoiceByKey.has("run-old"), false);
+  assert.equal(store.pendingRunAliasToKey.has("run:run-old"), false);
+  assert.equal(store.pendingRunAliasToKey.has("session:session-old"), false);
 });
 
 test("synthesizeVoiceAudio 缺少本地工具链时不会泄露内部细节", () => {
