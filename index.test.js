@@ -8,6 +8,7 @@ const packageJson = require("./package.json");
 const pluginManifest = require("./openclaw.plugin.json");
 const { resolveSpeechOptions } = require("./lib/config");
 const { buildMediaUnderstandingProvider, buildProvider } = require("./lib/providers");
+const { createVoiceReplyExecutor } = require("./lib/voice-reply-executor");
 const { commandExists, createPluginRuntime } = require("./lib/runtime");
 
 const {
@@ -3103,4 +3104,107 @@ test("失败的 agent_end 会清理待发送回复且不会发出语音", async 
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(sends.length, 0);
+});
+
+test("createVoiceReplyExecutor 会在调度失败后允许后续任务重新启动队列", async () => {
+  const warnings = [];
+  const scheduled = [];
+  let dispatchCalls = 0;
+  const steps = [];
+  const executor = createVoiceReplyExecutor({
+    logger: {
+      info() {},
+      warn(message) {
+        warnings.push(String(message));
+      }
+    },
+    dispatchAsync(fn) {
+      dispatchCalls += 1;
+      if (dispatchCalls === 1) {
+        throw new Error("dispatcher offline");
+      }
+      scheduled.push(fn);
+    }
+  });
+
+  executor.enqueueJob({
+    runKey: "run-a",
+    attempt: 1,
+    maxAttempts: 1,
+    execute: async () => {
+      steps.push("job-a");
+    }
+  });
+
+  executor.enqueueJob({
+    runKey: "run-b",
+    attempt: 1,
+    maxAttempts: 1,
+    execute: async () => {
+      steps.push("job-b");
+    }
+  });
+
+  assert.equal(dispatchCalls, 2);
+  assert.equal(scheduled.length, 1);
+
+  await scheduled[0]();
+
+  assert.deepEqual(steps, ["job-a", "job-b"]);
+  assert.ok(warnings.some((line) => line.includes("async dispatch failed") && line.includes("dispatcher offline")));
+});
+
+test("createVoiceReplyExecutor 会按 backoff 重新排队失败任务", async () => {
+  const scheduled = [];
+  const timers = [];
+  const attempts = [];
+  const warnings = [];
+  const executor = createVoiceReplyExecutor({
+    logger: {
+      info() {},
+      warn(message) {
+        warnings.push(String(message));
+      }
+    },
+    dispatchAsync(fn) {
+      scheduled.push(fn);
+    },
+    setTimer(fn, ms) {
+      timers.push({ fn, ms });
+      return { fn, ms };
+    }
+  });
+
+  executor.enqueueRetryable({
+    runKey: "run-retry",
+    target: "ou_test_user",
+    maxAttempts: 3,
+    retryBackoffMs: 250,
+    async executeAttempt(attempt) {
+      attempts.push(attempt);
+      if (attempt < 3) {
+        throw new Error(`attempt-${attempt}-failed`);
+      }
+    }
+  });
+
+  assert.equal(scheduled.length, 1);
+  await scheduled.shift()();
+  assert.deepEqual(attempts, [1]);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 250);
+
+  timers.shift().fn();
+  assert.equal(scheduled.length, 1);
+  await scheduled.shift()();
+  assert.deepEqual(attempts, [1, 2]);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 500);
+
+  timers.shift().fn();
+  assert.equal(scheduled.length, 1);
+  await scheduled.shift()();
+  assert.deepEqual(attempts, [1, 2, 3]);
+  assert.ok(warnings.some((line) => line.includes("scheduling retry") && line.includes("attempt=1/3")));
+  assert.ok(warnings.some((line) => line.includes("scheduling retry") && line.includes("attempt=2/3")));
 });
