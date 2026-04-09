@@ -1,5 +1,15 @@
 # 更新日志
 
+## 2026.4.8
+
+### 原生 LLM 摘要修复
+
+- 修复长文本语音摘要未命中 OpenClaw 原生 LLM 摘要能力、退回规则截断摘要的问题。
+- 摘要桥接层改为优先调用 OpenClaw 正式 `summarizeText()` 能力，旧 `_test.summarizeText` 仅作为兼容兜底。
+- 增强 OpenClaw speech-core runtime / summary API 的加载路径兼容，适配新版 OpenClaw 包导出结构。
+- 为 `targetLength` 增加 OpenClaw 原生摘要接口所需的最小长度保护，避免小于 100 时被宿主拒绝后退回规则摘要。
+- 补充正式摘要接口优先级回归测试，`npm run check`、`npm test` 均已通过。
+
 ## 2026.4.7
 
 ### OpenClaw 新版钩子兼容

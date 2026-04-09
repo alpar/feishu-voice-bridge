@@ -2,8 +2,8 @@
 
 ## 当前版本
 
-- 版本号：`2026.4.7`
-- git tag：`feishu-voice-bridge-v20260407`
+- 版本号：`2026.4.8`
+- git tag：`feishu-voice-bridge-v20260408`
 
 ## 建议发布流程
 
@@ -25,6 +25,7 @@ npm test
 
 ## 本版重点
 
-- 将 run 绑定入口从旧版 `before_agent_start` 迁移到 `before_model_resolve`，对齐 OpenClaw 新版 hook 语义。
-- 消除 `openclaw doctor` 对旧版 `before_agent_start` 的兼容性提示。
-- 保持现有自动语音回复状态机和串音修复逻辑不变，仅做兼容层迁移和回归测试补强。
+- 修复长文本语音摘要没有命中 OpenClaw 原生 LLM 摘要能力、退回规则截断的问题。
+- 摘要桥接层优先调用正式 `summarizeText()`，旧 `_test.summarizeText` 仅保留为兼容兜底。
+- 增强 OpenClaw speech-core API 加载路径兼容，适配新版包导出结构。
+- 为原生摘要目标长度增加最小值保护，避免被宿主拒绝后退回规则摘要。
