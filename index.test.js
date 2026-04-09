@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const plugin = require("./index.js");
 const packageJson = require("./package.json");
 const pluginManifest = require("./openclaw.plugin.json");
+const { summarizeWithOpenClawTtsModel } = require("./lib/core-bridge");
 const { resolveSpeechOptions } = require("./lib/config");
 const { buildMediaUnderstandingProvider, buildProvider } = require("./lib/providers");
 const { createVoiceReplyExecutor } = require("./lib/voice-reply-executor");
@@ -647,6 +648,51 @@ test("prepareVoiceReplyText 优先使用 OpenClaw 风格的模型摘要", async 
   assert.equal(result.text, "这是更自然的模型摘要。");
 });
 
+test("summarizeWithOpenClawTtsModel 优先调用正式 summarizeText 接口", async () => {
+  let calledFormalApi = false;
+  let calledLegacyApi = false;
+
+  const result = await summarizeWithOpenClawTtsModel({
+    text: "这是一段非常长的文本，需要通过正式的宿主摘要接口提炼成更短的播报内容。",
+    targetLength: 80,
+    cfg: {
+      messages: {
+        tts: {
+          summaryModel: "openai/gpt-4.1-mini"
+        }
+      }
+    },
+    loadSpeechRuntime: () => ({
+      resolveTtsConfig() {
+        return {
+          timeoutMs: 12345,
+          summaryModel: "openai/gpt-4.1-mini"
+        };
+      },
+      summarizeText: async (params) => {
+        calledFormalApi = true;
+        assert.equal(params.targetLength, 100);
+        return {
+          summary: "这是正式摘要接口生成的内容。"
+        };
+      },
+      _test: {
+        summarizeText: async () => {
+          calledLegacyApi = true;
+          return {
+            summary: "这是旧接口生成的内容。"
+          };
+        }
+      }
+    })
+  });
+
+  assert.equal(calledFormalApi, true);
+  assert.equal(calledLegacyApi, false);
+  assert.equal(result.text, "这是正式摘要接口生成的内容。");
+  assert.equal(result.source, "openclaw-tts");
+});
+
 test("loadGeneratedAudioArtifact 会保留原生音频格式信息", () => {
   const fs = require("node:fs");
   const os = require("node:os");
@@ -967,9 +1013,12 @@ test("createPluginRuntime 在注册期不会主动加载 OpenClaw speech runtime
     loadSpeechRuntime() {
       loadCount += 1;
       return {
-        _test: {
-          summarizeText() {}
-        }
+        summarizeText() {}
+      };
+    },
+    loadSummaryApi() {
+      return {
+        summarizeText() {}
       };
     },
     resolvePreferredNativeTtsProvider() {
