@@ -2,8 +2,8 @@
 
 ## 当前版本
 
-- 版本号：`2026.4.5`
-- git tag：`feishu-voice-bridge-v20260405`
+- 版本号：`2026.4.6`
+- git tag：`feishu-voice-bridge-v20260406`
 
 ## 建议发布流程
 
@@ -11,6 +11,7 @@
 2. 执行测试：
 
 ```bash
+npm run check
 npm test
 ```
 
@@ -24,7 +25,7 @@ npm test
 
 ## 本版重点
 
-- 插件主流程统一切换到 Node 工具链，移除运行链路中的 Bash 依赖。
-- 仓库内调试脚本已全部迁移为 Node 版本，`openclaw.json` 旧 `.sh` 配置需要同步升级。
-- 修复 Windows 下命令探测兼容问题，补充跨平台文档与调试说明。
-- 修复插件在 `register()` 阶段加载原生 speech runtime 导致的递归 / 自引用问题。
+- 自动语音回复状态模型按 OpenClaw 最新宿主语义收敛为“每个 session 当前 run”。
+- `agent_end.messages` 现在是最终正文主来源，`message_sent` 仅保留发送观测和解锁职责。
+- 增加 `activeRunId` 绑定与 stale run 防护，修复旧轮文本/语音迟到导致的新轮串音问题。
+- 收紧 `latest_route` 弱路由，只允许观测，不再借它创建新的待发送语音。

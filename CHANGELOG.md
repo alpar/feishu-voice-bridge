@@ -1,5 +1,16 @@
 # 更新日志
 
+## 2026.4.6
+
+### 自动语音回复状态模型收敛
+
+- 按 OpenClaw `2026.4.5` 宿主语义重构自动语音回复链路，主流程切换为 `before_agent_start` 绑定当前 session 活跃 run、`before_message_write` 缓存 assistant 文本候选、`agent_end.messages` 提取最终正文。
+- 将 `message_sent` 降级为“文本已发出”的观测信号，不再把它当成最终语音正文的唯一来源，避免旧 run 的迟到 sent 事件污染新一轮语音。
+- 为同一 session 增加 `activeRunId` 绑定和 stale run 防护，旧 run 的 `agent_end`、`message_sent` 不再覆盖当前轮待发送语音。
+- `agent_end` 在存在最终 assistant 快照时可直接补建 pending turn，不再依赖迟到的 `message_sent` 才触发语音发送。
+- 继续收紧弱路由兜底，`latest_route` 只保留观测用途，不再允许借它创建新的待发送语音，进一步降低跨轮串音风险。
+- 补充串音回归测试、`agent_end` 最终快照测试和弱路由保护测试，`npm run check`、`npm test` 均已通过。
+
 ## 2026.4.4
 
 ### Node 工具链统一

@@ -6,6 +6,19 @@
 2. 注册飞书语音转写 provider
 3. 在飞书场景把最终文本回复补发为语音消息
 
+## 当前版本
+
+- 当前版本：`2026.4.6`
+- 本版重点：自动语音回复状态模型已按 OpenClaw 最新宿主语义收敛，重点修复同一飞书会话中的跨轮串音问题。
+
+## 2026.4.6 升级说明
+
+- 自动语音回复现在以“当前 session 的当前 run”为中心做归属判断。
+- `agent_end.messages` 是最终语音正文的主来源，`before_message_write` 负责缓存候选文本。
+- `message_sent` 现在只作为“文本已发出”的观测信号，不再决定最终语音正文。
+- 如果你之前遇到“上一轮学习汇报摘要被播成下一轮清理 evomap 的语音”这类问题，升级后请优先复测同一 DM 会话连续多轮场景。
+- 升级后建议重启 OpenClaw Gateway，再执行一轮真实飞书会话回归。
+
 ## 快速安装
 
 当前只支持源码安装。普通使用场景按下面这条默认流程走，不要混用 npm 包安装、`install -l` 或手动复制。
@@ -241,10 +254,14 @@ openclaw plugins info feishu-voice-bridge
 - `voiceReplyWindowMs`：最近一次飞书入站消息后的语音回复窗口
 - `voiceReplyCooldownMs`：两次自动语音回复最小间隔
 - `voiceReplyDebounceMs`：等待文本稳定后再发送
+- `voiceReplyTextSendingFallbackMs`：只有 `message_sending` 但没有 `message_sent` 时的兜底等待时间
+- `voiceReplyNoTextFallbackMs`：没有文本发送钩子时，允许 assistant 最终文本兜底发语音的等待时间
+- `voiceReplyAssistantSettleMs`：`assistant_message` 连续写入后，等待正文收敛的最小时间
 - `voiceReplyRetryCount`：后台语音发送失败后的重试次数
 - `voiceReplyRetryBackoffMs`：后台语音发送失败后的重试间隔基数，实际为 `基数 x 当前尝试次数`
 - `maxReplyChars`：最终朗读文本上限
 - `maxCapturedReplyChars`：摘要前缓存文本上限
+- `enableBeforeAgentReply`：宿主支持时，允许更早捕获最终回复正文
 - `voiceReplySummaryEnabled`：长文本是否改为摘要朗读
 - `voiceReplySummaryMaxSentences`：摘要最多保留几句
 

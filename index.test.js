@@ -517,10 +517,10 @@ test("重复 register 不会重复注册 provider 和 hooks", () => {
 
   assert.equal(speechProviderCount, 1);
   assert.equal(mediaProviderCount, 1);
-  assert.equal(onCount, 12);
+  assert.equal(onCount, 13);
   assert.deepEqual(
     Array.from(handlers.values(), (items) => items.length),
-    new Array(12).fill(1)
+    new Array(13).fill(1)
   );
 });
 
@@ -1270,7 +1270,7 @@ test("单独的 message_sent 事件不再直接驱动自动语音回复", async 
   assert.equal(sends.length, 0);
 });
 
-test("agent_end 先到时，迟到的 message_sent 仍会补发最终语音", async () => {
+test("agent_end 自带最终 messages 快照时，不再依赖迟到的 message_sent 才发语音", async () => {
   const api = createApi();
   const timers = createTimerHarness();
   const sends = [];
@@ -1295,7 +1295,13 @@ test("agent_end 先到时，迟到的 message_sent 仍会补发最终语音", as
     messageId: "om_test_inbound_late_text"
   }), inboundCtx);
 
-  emit(api, "agent_end", { success: true }, {
+  emit(api, "agent_end", {
+    success: true,
+    messages: [{
+      role: "assistant",
+      content: [{ type: "text", text: "这是迟到但应该发语音的最终文本。" }]
+    }]
+  }, {
     ...inboundCtx,
     runId: "run-late-message-sent"
   });
@@ -1312,6 +1318,58 @@ test("agent_end 先到时，迟到的 message_sent 仍会补发最终语音", as
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(sends.length, 1);
   assert.equal(sends[0].text, "这是迟到但应该发语音的最终文本。");
+});
+
+test("agent_end 最终快照不会沿用 latest_route 弱路由去创建新的待发送语音", async () => {
+  const infos = [];
+  const api = createApi({
+    info(message) {
+      infos.push(String(message));
+    }
+  });
+  const timers = createTimerHarness();
+  const sends = [];
+
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "always",
+    voiceReplySummaryEnabled: false
+  }), {
+    clearTimer: timers.clearTimer,
+    sendVoiceReplyImpl: async (_config, _logger, params) => {
+      sends.push(params);
+      return true;
+    },
+    setTimer: timers.setTimer
+  });
+
+  emit(api, "inbound_claim", createInboundEvent({
+    messageId: "om_old_latest_route_only"
+  }), createCtx({
+    sessionKey: "agent:test:feishu:old:ou_test_user"
+  }));
+  emit(api, "message_sent", {
+    success: true,
+    text: "这是上一轮旧会话文本",
+    to: "user:ou_test_user"
+  }, createCtx({
+    sessionKey: "agent:test:feishu:old:ou_test_user"
+  }));
+
+  emit(api, "agent_end", {
+    success: true,
+    messages: [{
+      role: "assistant",
+      content: [{ type: "text", text: "我现在开始清理 evomap。" }]
+    }]
+  }, {
+    accountId: "default",
+    channelId: "feishu",
+    runId: "run-only-agent-end"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sends.length, 0);
+  assert.ok(infos.some((line) => line.includes("skip agent_end snapshot pending creation: latest_route is observation-only") && line.includes("run-only-agent-end")));
 });
 
 test("agent_end 先到且文本钩子只有 transcript echo 时，迟到的 assistant 最终文本仍会走 no_text_fallback 发语音", async () => {
@@ -1587,7 +1645,13 @@ test("跨插件实例时，message_sent 与 assistant_message 仍共享同一语
       content: [{ type: "text", text: "跨实例 /new 最终欢迎语" }]
     }
   }, inboundCtx);
-  emit(apiB, "agent_end", { success: true }, inboundCtx);
+  emit(apiB, "agent_end", {
+    success: true,
+    messages: [{
+      role: "assistant",
+      content: [{ type: "text", text: "跨实例 /new 最终欢迎语" }]
+    }]
+  }, inboundCtx);
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(sends.length, 1);
@@ -2100,7 +2164,13 @@ test("message_sent 最终文本优先于 assistant 中间态文本", async () =>
     text: "富阳区明天多云转晴，12 到 21 度，东北风 2 级。",
     to: "user:ou_test_user"
   }, ctx);
-  emit(api, "agent_end", { success: true }, ctx);
+  emit(api, "agent_end", {
+    success: true,
+    messages: [{
+      role: "assistant",
+      content: [{ type: "text", text: "富阳区明天多云转晴，12 到 21 度，东北风 2 级。" }]
+    }]
+  }, ctx);
 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(sends.length, 1);
@@ -2857,10 +2927,11 @@ test("新入站会清掉同目标的旧 pending，避免沿用上一轮 fallback
   }), createCtx({
     sessionKey: "agent:test:feishu:old:ou_test_user"
   }));
-  emit(api, "message_sent", {
-    success: true,
-    text: "这是上一轮 CM 学习汇报摘要推送",
-    to: "user:ou_test_user"
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "这是上一轮 CM 学习汇报摘要推送" }]
+    }
   }, createCtx({
     sessionKey: "agent:test:feishu:old:ou_test_user"
   }));
@@ -2900,7 +2971,7 @@ test("新入站会清掉同目标的旧 pending，避免沿用上一轮 fallback
   assert.match(sends[0].text, /evomap/u);
   assert.doesNotMatch(sends[0].text, /CM 学习汇报摘要推送/u);
   assert.ok(infos.some((line) => line.includes("cleared stale pending reply") && line.includes("CM 学习汇报摘要推送")));
-  assert.ok(infos.some((line) => line.includes("reply decision") && line.includes("selected=message_sent") && line.includes("evomap")));
+  assert.ok(infos.some((line) => line.includes("reply decision") && line.includes("evomap")));
 });
 
 test("重复 message_received 不会清掉当前轮 assistant fallback pending", async () => {
@@ -3008,6 +3079,89 @@ test("run-only 弱路由回退不会再创建新的待发送语音", async () =>
 
   assert.equal(sends.length, 0);
   assert.ok(infos.some((line) => line.includes("latest_route is observation-only") && line.includes("run-only-new")));
+});
+
+test("同一 session 下旧 run 的迟到 message_sent 不会污染新一轮语音内容", async () => {
+  const infos = [];
+  const api = createApi({
+    info(message) {
+      infos.push(String(message));
+    }
+  });
+  const timers = createTimerHarness();
+  const sends = [];
+
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "inbound",
+    voiceReplyDebounceMs: 0
+  }), {
+    clearTimer: timers.clearTimer,
+    setTimer: timers.setTimer,
+    sendVoiceReplyImpl: async (_config, _logger, params) => {
+      sends.push(params);
+      return true;
+    }
+  });
+
+  const sessionCtx = createCtx({
+    sessionKey: "agent:test:feishu:direct:ou_test_user"
+  });
+
+  emit(api, "inbound_claim", createInboundEvent({
+    messageId: "om_old_turn"
+  }), sessionCtx);
+  emit(api, "message_sent", {
+    success: true,
+    text: "这是上一轮 CM 学习汇报摘要推送",
+    to: "user:ou_test_user"
+  }, {
+    ...sessionCtx,
+    runId: "run-old-turn"
+  });
+
+  emit(api, "inbound_claim", createInboundEvent({
+    messageId: "om_new_turn"
+  }), sessionCtx);
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "我先帮你清理 evomap。" }]
+    }
+  }, {
+    ...sessionCtx,
+    runId: "run-new-turn"
+  });
+
+  emit(api, "message_sent", {
+    success: true,
+    text: "这是上一轮 CM 学习汇报摘要推送",
+    to: "user:ou_test_user"
+  }, {
+    ...sessionCtx,
+    runId: "run-old-turn"
+  });
+
+  emit(api, "message_sent", {
+    success: true,
+    text: "我先帮你清理 evomap。",
+    to: "user:ou_test_user"
+  }, {
+    ...sessionCtx,
+    runId: "run-new-turn"
+  });
+
+  emit(api, "agent_end", {
+    success: true
+  }, {
+    ...sessionCtx,
+    runId: "run-new-turn"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sends.length, 1);
+  assert.match(sends[0].text, /evomap/u);
+  assert.doesNotMatch(sends[0].text, /CM 学习汇报摘要推送/u);
+  assert.ok(!infos.some((line) => line.includes("captured message_sent text") && line.includes("run=run-new-turn") && line.includes("CM 学习汇报摘要推送")));
 });
 
 test("latest_route 不会误把当前 run 当成语音入站会话去拦截 tts 工具", () => {
