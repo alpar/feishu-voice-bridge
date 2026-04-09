@@ -1,5 +1,14 @@
 # 更新日志
 
+## 2026.4.7
+
+### OpenClaw 新版钩子兼容
+
+- 将当前 run 绑定逻辑从旧版 `before_agent_start` 迁移到 `before_model_resolve`，对齐 OpenClaw 新版插件开发建议，消除 `doctor` 对旧钩子的兼容性提示。
+- 保持现有自动语音回复状态模型不变，继续沿用“当前 session / 当前 run”的归属语义，不影响上一版修复的串音防护。
+- 新增 `before_model_resolve` 回归测试，覆盖“先绑定 active run，再由后续稀疏文本事件复用”的场景。
+- `npm run check`、`npm test` 均已通过。
+
 ## 2026.4.6
 
 ### 自动语音回复状态模型收敛

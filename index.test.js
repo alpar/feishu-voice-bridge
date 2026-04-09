@@ -522,6 +522,8 @@ test("重复 register 不会重复注册 provider 和 hooks", () => {
     Array.from(handlers.values(), (items) => items.length),
     new Array(13).fill(1)
   );
+  assert.equal(handlers.has("before_model_resolve"), true);
+  assert.equal(handlers.has("before_agent_start"), false);
 });
 
 test("shouldSkipVoiceReplyText 会过滤 /stop 自动回复和 NO_REPLY", () => {
@@ -1268,6 +1270,75 @@ test("单独的 message_sent 事件不再直接驱动自动语音回复", async 
 
   assert.equal(timers.timers.length, 0);
   assert.equal(sends.length, 0);
+});
+
+test("before_model_resolve 会提前绑定当前 run，供后续稀疏文本事件复用", async () => {
+  const api = createApi();
+  const timers = createTimerHarness();
+  const sends = [];
+
+  registerVoiceReplyHooks(api, createConfig({
+    voiceReplyMode: "inbound",
+    voiceReplySummaryEnabled: false
+  }), {
+    clearTimer: timers.clearTimer,
+    sendVoiceReplyImpl: async (_config, _logger, params) => {
+      sends.push(params);
+      return true;
+    },
+    setTimer: timers.setTimer
+  });
+
+  const ctx = createCtx({
+    sessionKey: "agent:test:feishu:direct:ou_test_user_model_resolve"
+  });
+  emit(api, "inbound_claim", createInboundEvent({
+    chatId: "ou_test_user_model_resolve",
+    messageId: "om_test_inbound_model_resolve"
+  }), ctx);
+
+  emit(api, "before_model_resolve", {
+    prompt: "帮我整理一下"
+  }, {
+    ...ctx,
+    runId: "run-before-model-resolve"
+  });
+
+  emit(api, "before_message_write", {
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "我先帮你整理一下。" }]
+    }
+  }, {
+    accountId: "default",
+    channelId: "feishu",
+    sessionKey: ctx.sessionKey
+  });
+
+  emit(api, "message_sent", {
+    success: true,
+    text: "我先帮你整理一下。",
+    to: "user:ou_test_user_model_resolve"
+  }, {
+    accountId: "default",
+    channelId: "feishu",
+    sessionKey: ctx.sessionKey
+  });
+
+  emit(api, "agent_end", {
+    success: true,
+    messages: [{
+      role: "assistant",
+      content: [{ type: "text", text: "我先帮你整理一下。" }]
+    }]
+  }, {
+    ...ctx,
+    runId: "run-before-model-resolve"
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].text, "我先帮你整理一下。");
 });
 
 test("agent_end 自带最终 messages 快照时，不再依赖迟到的 message_sent 才发语音", async () => {

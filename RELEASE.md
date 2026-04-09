@@ -2,8 +2,8 @@
 
 ## 当前版本
 
-- 版本号：`2026.4.6`
-- git tag：`feishu-voice-bridge-v20260406`
+- 版本号：`2026.4.7`
+- git tag：`feishu-voice-bridge-v20260407`
 
 ## 建议发布流程
 
@@ -25,7 +25,6 @@ npm test
 
 ## 本版重点
 
-- 自动语音回复状态模型按 OpenClaw 最新宿主语义收敛为“每个 session 当前 run”。
-- `agent_end.messages` 现在是最终正文主来源，`message_sent` 仅保留发送观测和解锁职责。
-- 增加 `activeRunId` 绑定与 stale run 防护，修复旧轮文本/语音迟到导致的新轮串音问题。
-- 收紧 `latest_route` 弱路由，只允许观测，不再借它创建新的待发送语音。
+- 将 run 绑定入口从旧版 `before_agent_start` 迁移到 `before_model_resolve`，对齐 OpenClaw 新版 hook 语义。
+- 消除 `openclaw doctor` 对旧版 `before_agent_start` 的兼容性提示。
+- 保持现有自动语音回复状态机和串音修复逻辑不变，仅做兼容层迁移和回归测试补强。
